@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Claude editor settings
+.claude/
+
+# Python backend
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/.pytest_cache/
+backend/fuegopro.db
+
+# Frontend (also covered by frontend/.gitignore)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# Env files
+.env
+.env.local
+.env.*.local

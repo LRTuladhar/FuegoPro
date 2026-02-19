@@ -1,0 +1,27 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: #f1f5f9;
+  background: #0f172a;
+  -webkit-font-smoothing: antialiased;
+}
+
+input, select, button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Recharts SVG text inherits from body via CSS; override tick color globally */
+.recharts-cartesian-axis-tick text {
+  fill: #94a3b8;
+}
