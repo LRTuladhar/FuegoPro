@@ -146,13 +146,15 @@ class AccountTimelinePoint(BaseModel):
     account_id: int
     account_name: str
     age: int
-    p50: float
+    band: str
+    balance: float
 
     class Config:
         from_attributes = True
 
 
 class AnnualDetailOut(BaseModel):
+    band: str
     age: int
     tax_federal_ordinary: float
     tax_federal_ltcg: float
@@ -164,6 +166,7 @@ class AnnualDetailOut(BaseModel):
 
 
 class IncomeDetailOut(BaseModel):
+    band: str
     age: int
     source_name: str
     amount: float
@@ -173,9 +176,21 @@ class IncomeDetailOut(BaseModel):
 
 
 class ExpenseDetailOut(BaseModel):
+    band: str
     age: int
     expense_name: str
     amount: float
+
+    class Config:
+        from_attributes = True
+
+
+class ReturnDetailOut(BaseModel):
+    band: str
+    age: int
+    account_id: int
+    account_name: str
+    return_amount: float
 
     class Config:
         from_attributes = True
@@ -193,6 +208,7 @@ class SimulationResultOut(BaseModel):
     annual_detail: list[AnnualDetailOut] = []
     income_detail: list[IncomeDetailOut] = []
     expense_detail: list[ExpenseDetailOut] = []
+    return_detail: list[ReturnDetailOut] = []
 
     class Config:
         from_attributes = True

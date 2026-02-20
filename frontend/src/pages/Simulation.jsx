@@ -4,7 +4,7 @@ import { getPlan, runSimulation, getSimulationResults } from '../api/client'
 import SuccessRate from '../components/simulation/SuccessRate'
 import PercentileBandChart from '../components/simulation/PercentileBandChart'
 import AccountBalancesChart from '../components/simulation/AccountBalancesChart'
-import DetailDrawer from '../components/simulation/DetailDrawer'
+import DetailDrawer, { PortfolioSection, BandSelector } from '../components/simulation/DetailDrawer'
 import SimConfigPanel from '../components/simulation/SimConfigPanel'
 import { useSimConfig } from '../store/simConfig'
 
@@ -18,6 +18,7 @@ export default function Simulation() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [simConfig, setSimConfig] = useState(null)
+  const [band, setBand] = useState('median')
 
   // Initialise local config from global defaults once available
   useEffect(() => {
@@ -125,20 +126,42 @@ export default function Simulation() {
         /* Results */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
           <SuccessRate rate={results.success_rate} numRuns={results.num_runs} />
-          <PercentileBandChart
-            data={results.portfolio_timeline}
-            lower={results.lower_percentile}
-            upper={results.upper_percentile}
-          />
-          <AccountBalancesChart data={results.account_timeline} />
-          <DetailDrawer
-            portfolioTimeline={results.portfolio_timeline}
-            lowerPct={results.lower_percentile}
-            upperPct={results.upper_percentile}
-            annualDetail={results.annual_detail}
-            incomeDetail={results.income_detail}
-            expenseDetail={results.expense_detail}
-          />
+
+          {/* Group 1: Portfolio value chart + table */}
+          <div style={group}>
+            <PercentileBandChart
+              data={results.portfolio_timeline}
+              lower={results.lower_percentile}
+              upper={results.upper_percentile}
+            />
+            <PortfolioSection
+              data={results.portfolio_timeline}
+              lower={results.lower_percentile}
+              upper={results.upper_percentile}
+            />
+          </div>
+
+          {/* Band selection panel — controls both the chart and detail tables */}
+          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Band Selection
+            </span>
+            <BandSelector value={band} onChange={setBand} />
+          </div>
+
+          {/* Group 2: Account balances chart + detail tables */}
+          <div style={group}>
+            <AccountBalancesChart data={results.account_timeline} band={band} />
+            <DetailDrawer
+              annualDetail={results.annual_detail}
+              incomeDetail={results.income_detail}
+              expenseDetail={results.expense_detail}
+              accountTimeline={results.account_timeline}
+              returnDetail={results.return_detail}
+              initialBalance={plan?.accounts?.reduce((s, a) => s + (a.balance ?? 0), 0) ?? 0}
+              band={band}
+            />
+          </div>
           <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0, textAlign: 'right' }}>
             {results.num_runs.toLocaleString()} runs · lower {results.lower_percentile}th /
             upper {results.upper_percentile}th percentile ·
@@ -149,6 +172,8 @@ export default function Simulation() {
     </div>
   )
 }
+
+const group = { display: 'flex', flexDirection: 'column', gap: '0.5rem' }
 
 function btn(variant) {
   const base = {

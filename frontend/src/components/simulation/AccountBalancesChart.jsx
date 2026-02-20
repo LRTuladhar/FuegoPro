@@ -5,36 +5,40 @@ import {
 
 const COLORS = ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#22d3ee', '#fb7185']
 
+const BAND_LABELS = { lower: 'Lower Band', median: 'Median', upper: 'Upper Band' }
+
 const fmt = (v) => {
   if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`
   if (v >= 1e3) return `$${(v / 1e3).toFixed(0)}K`
   return `$${v}`
 }
 
-export default function AccountBalancesChart({ data }) {
+export default function AccountBalancesChart({ data, band }) {
   if (!data || data.length === 0) return null
 
+  const filtered = data.filter((p) => p.band === band)
+
   // Build sorted list of unique ages
-  const ages = [...new Set(data.map((p) => p.age))].sort((a, b) => a - b)
+  const ages = [...new Set(filtered.map((p) => p.age))].sort((a, b) => a - b)
 
   // Build ordered list of unique accounts (preserve first-seen order)
   const seen = new Map()
-  data.forEach((p) => {
+  filtered.forEach((p) => {
     if (!seen.has(p.account_id)) seen.set(p.account_id, p.account_name)
   })
   const accounts = [...seen.entries()] // [[id, name], ...]
 
   // Transform to per-age rows: { age, "Account Name": balance, ... }
   const byAge = {}
-  data.forEach((p) => {
+  filtered.forEach((p) => {
     if (!byAge[p.age]) byAge[p.age] = { age: p.age }
-    byAge[p.age][p.account_name] = p.p50
+    byAge[p.age][p.account_name] = p.balance
   })
   const chartData = ages.map((age) => byAge[age])
 
   return (
     <div style={card}>
-      <h2 style={heading}>Account Balances (Median Run)</h2>
+      <h2 style={heading}>Account Balances — {BAND_LABELS[band] ?? band}</h2>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={chartData} margin={{ top: 4, right: 24, bottom: 16, left: 16 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />

@@ -108,6 +108,8 @@ class SimulationResult(Base):
                                       cascade="all, delete-orphan")
     expense_detail    = relationship("SimulationExpenseDetail",     back_populates="result",
                                       cascade="all, delete-orphan")
+    return_detail     = relationship("SimulationReturnDetail",      back_populates="result",
+                                      cascade="all, delete-orphan")
 
 
 class SimulationPortfolioTimeline(Base):
@@ -125,7 +127,7 @@ class SimulationPortfolioTimeline(Base):
 
 
 class SimulationAccountTimeline(Base):
-    """Aggregated median balance per account per age. One row per account per age."""
+    """Account balance per band per account per age. band: 'median' | 'lower' | 'upper'."""
     __tablename__ = "simulation_account_timeline"
 
     id           = Column(Integer, primary_key=True, autoincrement=True)
@@ -133,17 +135,19 @@ class SimulationAccountTimeline(Base):
     account_id   = Column(Integer, ForeignKey("accounts.id"), nullable=False)
     account_name = Column(String, nullable=False)  # denormalized; account may be renamed later
     age          = Column(Integer, nullable=False)
-    p50          = Column(Float, nullable=False)    # median account balance
+    band         = Column(String, nullable=False)
+    balance      = Column(Float, nullable=False)
 
     result = relationship("SimulationResult", back_populates="account_timeline")
 
 
 class SimulationAnnualDetail(Base):
-    """Tax breakdown for the median simulation run. One row per age."""
+    """Tax breakdown per band per age. band: 'median' | 'lower' | 'upper'."""
     __tablename__ = "simulation_annual_detail"
 
     id                   = Column(Integer, primary_key=True, autoincrement=True)
     result_id            = Column(Integer, ForeignKey("simulation_results.id", ondelete="CASCADE"), nullable=False)
+    band                 = Column(String, nullable=False)
     age                  = Column(Integer, nullable=False)
     tax_federal_ordinary = Column(Float, nullable=False)
     tax_federal_ltcg     = Column(Float, nullable=False)
@@ -154,11 +158,12 @@ class SimulationAnnualDetail(Base):
 
 
 class SimulationIncomeDetail(Base):
-    """Income breakdown for the median run. One row per income source per age."""
+    """Income breakdown per band. band: 'median' | 'lower' | 'upper'."""
     __tablename__ = "simulation_income_detail"
 
     id          = Column(Integer, primary_key=True, autoincrement=True)
     result_id   = Column(Integer, ForeignKey("simulation_results.id", ondelete="CASCADE"), nullable=False)
+    band        = Column(String, nullable=False)
     age         = Column(Integer, nullable=False)
     source_name = Column(String, nullable=False)
     amount      = Column(Float, nullable=False)
@@ -167,16 +172,32 @@ class SimulationIncomeDetail(Base):
 
 
 class SimulationExpenseDetail(Base):
-    """Expense breakdown for the median run. One row per expense per age."""
+    """Expense breakdown per band. band: 'median' | 'lower' | 'upper'."""
     __tablename__ = "simulation_expense_detail"
 
     id           = Column(Integer, primary_key=True, autoincrement=True)
     result_id    = Column(Integer, ForeignKey("simulation_results.id", ondelete="CASCADE"), nullable=False)
+    band         = Column(String, nullable=False)
     age          = Column(Integer, nullable=False)
     expense_name = Column(String, nullable=False)
-    amount       = Column(Float, nullable=False)  # inflation-adjusted amount for this age
+    amount       = Column(Float, nullable=False)
 
     result = relationship("SimulationResult", back_populates="expense_detail")
+
+
+class SimulationReturnDetail(Base):
+    """Investment return per account per band per age. band: 'median' | 'lower' | 'upper'."""
+    __tablename__ = "simulation_return_detail"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    result_id     = Column(Integer, ForeignKey("simulation_results.id", ondelete="CASCADE"), nullable=False)
+    band          = Column(String, nullable=False)
+    age           = Column(Integer, nullable=False)
+    account_id    = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    account_name  = Column(String, nullable=False)
+    return_amount = Column(Float, nullable=False)
+
+    result = relationship("SimulationResult", back_populates="return_detail")
 
 
 # ---------------------------------------------------------------------------

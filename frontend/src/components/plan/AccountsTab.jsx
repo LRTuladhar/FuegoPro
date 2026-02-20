@@ -45,7 +45,14 @@ export default function AccountsTab({ accounts, onChange }) {
                       </select>
                     </td>
                     <td style={td}>
-                      <select value={a.asset_class} onChange={e => update(i, { asset_class: e.target.value })} style={ci()}>
+                      <select
+                        value={a.asset_class}
+                        onChange={e => {
+                          const cls = e.target.value
+                          update(i, { asset_class: cls, ...(cls !== 'stocks' ? { gains_pct: null } : {}) })
+                        }}
+                        style={ci()}
+                      >
                         <option value="stocks">Stocks</option>
                         <option value="bonds">Bonds</option>
                         <option value="savings">Savings</option>
@@ -60,7 +67,7 @@ export default function AccountsTab({ accounts, onChange }) {
                         : <span style={muted}>historical</span>}
                     </td>
                     <td style={td}>
-                      {a.tax_treatment === 'taxable_brokerage'
+                      {a.tax_treatment === 'taxable_brokerage' && a.asset_class === 'stocks'
                         ? <input type="number" step="0.01" min={0} max={1} placeholder="0.80" value={a.gains_pct ?? ''} onChange={e => update(i, { gains_pct: e.target.value === '' ? null : Number(e.target.value) })} style={ci(70)} />
                         : <span style={muted}>—</span>}
                     </td>

@@ -10,9 +10,7 @@ const EMPTY = {
 const INCOME_TYPES = [
   { value: 'employment',       label: 'Employment' },
   { value: 'social_security',  label: 'Social Security' },
-  { value: 'pension',          label: 'Pension' },
   { value: 'rental',           label: 'Rental' },
-  { value: '401k_distribution',label: '401(k) Distribution' },
   { value: 'other',            label: 'Other' },
 ]
 

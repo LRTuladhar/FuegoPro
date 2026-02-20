@@ -19,6 +19,7 @@ from models.db_models import (
     SimulationIncomeDetail,
     SimulationAccountTimeline,
     SimulationPortfolioTimeline,
+    SimulationReturnDetail,
     SimulationConfig as DBSimulationConfig,
 )
 from models.db_models import SimulationResult as DBSimulationResult
@@ -49,6 +50,7 @@ def _load_result(plan_id: int, db: Session) -> DBSimulationResult:
             selectinload(DBSimulationResult.annual_detail),
             selectinload(DBSimulationResult.income_detail),
             selectinload(DBSimulationResult.expense_detail),
+            selectinload(DBSimulationResult.return_detail),
         )
         .filter_by(plan_id=plan_id)
         .first()
@@ -194,18 +196,19 @@ def run_simulation(
             age=pt.age, p50=pt.p50, p_lower=pt.p_lower, p_upper=pt.p_upper,
         ))
 
-    # Persist account timeline
+    # Persist account timeline (all three bands)
     for at in result.account_timeline:
         db.add(SimulationAccountTimeline(
             result_id=db_result.id,
             account_id=at.account_id, account_name=at.account_name,
-            age=at.age, p50=at.p50,
+            age=at.age, band=at.band, balance=at.balance,
         ))
 
-    # Persist annual tax detail (median run)
+    # Persist annual tax detail (all three bands)
     for ad in result.annual_detail:
         db.add(SimulationAnnualDetail(
             result_id=db_result.id,
+            band=ad.band,
             age=ad.age,
             tax_federal_ordinary=ad.tax_federal_ordinary,
             tax_federal_ltcg=ad.tax_federal_ltcg,
@@ -213,18 +216,31 @@ def run_simulation(
             effective_tax_rate=ad.effective_tax_rate,
         ))
 
-    # Persist income detail (median run)
+    # Persist income detail (all three bands)
     for inc in result.income_detail:
         db.add(SimulationIncomeDetail(
             result_id=db_result.id,
+            band=inc.band,
             age=inc.age, source_name=inc.source_name, amount=inc.amount,
         ))
 
-    # Persist expense detail (median run)
+    # Persist expense detail (all three bands)
     for exp in result.expense_detail:
         db.add(SimulationExpenseDetail(
             result_id=db_result.id,
+            band=exp.band,
             age=exp.age, expense_name=exp.expense_name, amount=exp.amount,
+        ))
+
+    # Persist investment return detail (all three bands)
+    for ret in result.return_detail:
+        db.add(SimulationReturnDetail(
+            result_id=db_result.id,
+            band=ret.band,
+            age=ret.age,
+            account_id=ret.account_id,
+            account_name=ret.account_name,
+            return_amount=ret.return_amount,
         ))
 
     # Update plan's cached simulation fields

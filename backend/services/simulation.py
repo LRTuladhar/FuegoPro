@@ -102,7 +102,8 @@ class AgeAccountPoint:
     account_id:   int
     account_name: str
     age:          int
-    p50:          float
+    balance:      float
+    band:         str = 'median'
 
 
 @dataclass
@@ -112,6 +113,7 @@ class AnnualDetail:
     tax_federal_ltcg:     float
     tax_state:            float
     effective_tax_rate:   float
+    band:                 str = 'median'   # 'median' | 'lower' | 'upper'
 
 
 @dataclass
@@ -119,6 +121,7 @@ class IncomeDetail:
     age:         int
     source_name: str
     amount:      float
+    band:        str = 'median'
 
 
 @dataclass
@@ -126,6 +129,16 @@ class ExpenseDetail:
     age:          int
     expense_name: str
     amount:       float
+    band:         str = 'median'
+
+
+@dataclass
+class ReturnDetail:
+    age:           int
+    account_id:    int
+    account_name:  str
+    return_amount: float
+    band:          str = 'median'
 
 
 @dataclass
@@ -136,6 +149,7 @@ class SimulationResult:
     annual_detail:      List[AnnualDetail]
     income_detail:      List[IncomeDetail]
     expense_detail:     List[ExpenseDetail]
+    return_detail:      List[ReturnDetail]
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +160,7 @@ def _simulate_one_run(
     plan:          PlanInputs,
     accounts:      List[AccountState],   # already deep-copied for this run
     stock_returns: np.ndarray,           # pre-sampled annual returns, shape (num_ages,)
-) -> Tuple[bool, np.ndarray, np.ndarray, List[dict], List[dict], List[dict]]:
+) -> Tuple[bool, np.ndarray, np.ndarray, List[dict], List[dict], List[dict], List[dict]]:
     """
     Simulate one sequence of annual market returns for the full planning horizon.
 
@@ -158,6 +172,7 @@ def _simulate_one_run(
     annual_details  : list of dicts, one per year.
     income_details  : list of dicts, one per active income source per year.
     expense_details : list of dicts, one per active expense per year.
+    return_details  : list of dicts, one per account per year.
     """
     num_ages    = plan.planning_horizon
     n_accts     = len(accounts)
@@ -168,6 +183,7 @@ def _simulate_one_run(
     annual_details:  List[dict] = []
     income_details:  List[dict] = []
     expense_details: List[dict] = []
+    return_details:  List[dict] = []
     survived = True
 
     # References to traditional accounts; reused each year for RMDs / 401k pulls.
@@ -184,7 +200,6 @@ def _simulate_one_run(
         ss_gross         = 0.0   # Social Security (gross; taxable fraction applied later)
         other_ordinary   = 0.0   # Fully taxable ordinary income (employment, pension, etc.)
         other_nontaxable = 0.0   # Non-taxable income (e.g. Roth-like; covers expenses)
-        k401_planned     = 0.0   # Voluntary 401k / IRA distributions (user-specified)
 
         for src in plan.income_sources:
             if not (src.start_age <= age <= src.end_age):
@@ -194,27 +209,33 @@ def _simulate_one_run(
 
             if src.income_type == "social_security":
                 ss_gross += amt
-            elif src.income_type == "401k_distribution":
-                k401_planned += amt
             elif src.income_type == "other":
                 if src.is_taxable:
                     other_ordinary += amt
                 else:
                     other_nontaxable += amt
             else:
-                # employment | pension | rental → fully taxable ordinary income
+                # employment | rental → fully taxable ordinary income
                 other_ordinary += amt
 
         # -------------------------------------------------------------------
-        # Step 2 — Pull planned 401k distributions from traditional accounts
-        # User has committed to taking this amount; it becomes ordinary income.
+        # Step 1b — Annual bond interest from taxable brokerage accounts
+        # Interest is taxed as ordinary income each year; withdrawals from
+        # these accounts carry no additional tax (basis already taxed here).
         # -------------------------------------------------------------------
-        if k401_planned > 0.0 and traditional:
-            wr_k401 = withdraw_for_shortfall(traditional, k401_planned)
-            other_ordinary += wr_k401.ordinary_income   # always ordinary (pre-tax account)
+        for acct in accounts:
+            if acct.tax_treatment == "taxable_brokerage" and acct.asset_class == "bonds":
+                interest = acct.balance * acct.annual_return_rate
+                if interest > 0.0:
+                    other_ordinary += interest
+                    income_details.append({
+                        "age": age,
+                        "source_name": f"{acct.name} Interest",
+                        "amount": interest,
+                    })
 
         # -------------------------------------------------------------------
-        # Step 3 — Mandatory RMDs from traditional accounts
+        # Step 2 — Mandatory RMDs from traditional accounts
         # Must be taken regardless of need; any excess covers expenses.
         # -------------------------------------------------------------------
         rmd_total = 0.0
@@ -226,7 +247,7 @@ def _simulate_one_run(
                 rmd_total    += actual
 
         # -------------------------------------------------------------------
-        # Step 4 — Inflation-adjusted expenses for this year
+        # Step 3 — Inflation-adjusted expenses for this year
         # -------------------------------------------------------------------
         total_expenses = 0.0
         for exp in plan.expenses:
@@ -237,7 +258,7 @@ def _simulate_one_run(
             expense_details.append({"age": age, "expense_name": exp.name, "amount": adjusted})
 
         # -------------------------------------------------------------------
-        # Step 5 — Withdraw from accounts to cover expense shortfall
+        # Step 4 — Withdraw from accounts to cover expense shortfall
         # Order: cash_savings → taxable_brokerage → traditional
         # -------------------------------------------------------------------
         available_income  = other_ordinary + other_nontaxable + ss_gross + rmd_total
@@ -248,7 +269,7 @@ def _simulate_one_run(
             survived = False
 
         # -------------------------------------------------------------------
-        # Step 6 — Compute taxes
+        # Step 5 — Compute taxes
         # -------------------------------------------------------------------
         # Ordinary income from all pre-tax distributions this year
         pretax_distributions = rmd_total + wr_expense.ordinary_income
@@ -276,7 +297,7 @@ def _simulate_one_run(
         total_tax = fed_total + state_tax
 
         # -------------------------------------------------------------------
-        # Step 7 — Withdraw from accounts to cover tax bill
+        # Step 6 — Withdraw from accounts to cover tax bill
         # Cash remaining after expenses covers taxes first; pull the rest.
         # -------------------------------------------------------------------
         cash_after_expenses = available_income + wr_expense.total_withdrawn - total_expenses
@@ -288,11 +309,19 @@ def _simulate_one_run(
                 survived = False
 
         # -------------------------------------------------------------------
-        # Step 8 — Apply end-of-year investment returns
+        # Step 7 — Apply end-of-year investment returns
         # -------------------------------------------------------------------
         for acct in accounts:
-            growth       = stock_return if acct.asset_class == "stocks" else acct.annual_return_rate
-            acct.balance = max(0.0, acct.balance * (1.0 + growth))
+            growth        = stock_return if acct.asset_class == "stocks" else acct.annual_return_rate
+            bal_before    = acct.balance
+            acct.balance  = max(0.0, acct.balance * (1.0 + growth))
+            return_amount = acct.balance - bal_before
+            return_details.append({
+                "age":           age,
+                "account_id":    acct.id,
+                "account_name":  acct.name,
+                "return_amount": return_amount,
+            })
 
         # -------------------------------------------------------------------
         # Step 9 — Record year-end state
@@ -312,7 +341,7 @@ def _simulate_one_run(
             "effective_tax_rate":   eff_rate,
         })
 
-    return survived, portfolio_vals, account_vals, annual_details, income_details, expense_details
+    return survived, portfolio_vals, account_vals, annual_details, income_details, expense_details, return_details
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +380,7 @@ def simulate(
     all_annual:  List[List[dict]] = []
     all_income:  List[List[dict]] = []
     all_expense: List[List[dict]] = []
+    all_return:  List[List[dict]] = []
 
     for run_idx in range(config.num_runs):
         # Sample a full sequence of annual stock returns for this run
@@ -365,12 +395,13 @@ def simulate(
                 asset_class=a.asset_class,
                 balance=a.balance,
                 annual_return_rate=a.annual_return_rate or 0.0,
-                gains_pct=a.gains_pct or 0.0,
+                # Bond interest is taxed annually (Step 1b); withdrawals are tax-free.
+                gains_pct=0.0 if (a.tax_treatment == "taxable_brokerage" and a.asset_class == "bonds") else (a.gains_pct or 0.0),
             )
             for a in plan.accounts
         ]
 
-        survived, pv, av, ann_det, inc_det, exp_det = _simulate_one_run(
+        survived, pv, av, ann_det, inc_det, exp_det, ret_det = _simulate_one_run(
             plan=plan,
             accounts=accounts_copy,
             stock_returns=stock_returns,
@@ -384,6 +415,7 @@ def simulate(
         all_annual.append(ann_det)
         all_income.append(inc_det)
         all_expense.append(exp_det)
+        all_return.append(ret_det)
 
     # -----------------------------------------------------------------------
     # Success rate
@@ -405,31 +437,55 @@ def simulate(
         ))
 
     # -----------------------------------------------------------------------
-    # Median account balance per account per age (across all runs)
+    # Representative runs: median, lower-band, upper-band
+    # Each is the run whose final portfolio value is closest to that
+    # percentile's value across all runs.
+    # -----------------------------------------------------------------------
+    final_vals    = all_portfolio[:, -1]
+    median_final  = float(np.median(final_vals))
+    p_lower_final = float(np.percentile(final_vals, config.lower_percentile))
+    p_upper_final = float(np.percentile(final_vals, config.upper_percentile))
+
+    median_idx = int(np.argmin(np.abs(final_vals - median_final)))
+    lower_idx  = int(np.argmin(np.abs(final_vals - p_lower_final)))
+    upper_idx  = int(np.argmin(np.abs(final_vals - p_upper_final)))
+
+    # -----------------------------------------------------------------------
+    # Account balances per representative run per account per age
     # -----------------------------------------------------------------------
     account_timeline: List[AgeAccountPoint] = []
-    for ai, acct in enumerate(plan.accounts):
-        for age_idx in range(num_ages):
-            age  = plan.current_age + age_idx
-            vals = all_accounts[:, ai, age_idx]
-            account_timeline.append(AgeAccountPoint(
-                account_id=acct.id,
-                account_name=acct.name,
-                age=age,
-                p50=float(np.median(vals)),
-            ))
+    for band_name, run_idx in [('lower', lower_idx), ('median', median_idx), ('upper', upper_idx)]:
+        for ai, acct in enumerate(plan.accounts):
+            for age_idx in range(num_ages):
+                age = plan.current_age + age_idx
+                account_timeline.append(AgeAccountPoint(
+                    account_id=acct.id,
+                    account_name=acct.name,
+                    age=age,
+                    balance=float(all_accounts[run_idx, ai, age_idx]),
+                    band=band_name,
+                ))
 
-    # -----------------------------------------------------------------------
-    # Median run: year-by-year income / expense / tax detail
-    # Defined as the run whose final portfolio value is closest to the median.
-    # -----------------------------------------------------------------------
-    final_vals   = all_portfolio[:, -1]
-    median_final = float(np.median(final_vals))
-    median_idx   = int(np.argmin(np.abs(final_vals - median_final)))
-
-    annual_detail  = [AnnualDetail(**d)  for d in all_annual[median_idx]]
-    income_detail  = [IncomeDetail(**d)  for d in all_income[median_idx]]
-    expense_detail = [ExpenseDetail(**d) for d in all_expense[median_idx]]
+    annual_detail: List[AnnualDetail] = (
+        [AnnualDetail(band='lower',  **d) for d in all_annual[lower_idx]] +
+        [AnnualDetail(band='median', **d) for d in all_annual[median_idx]] +
+        [AnnualDetail(band='upper',  **d) for d in all_annual[upper_idx]]
+    )
+    income_detail: List[IncomeDetail] = (
+        [IncomeDetail(band='lower',  **d) for d in all_income[lower_idx]] +
+        [IncomeDetail(band='median', **d) for d in all_income[median_idx]] +
+        [IncomeDetail(band='upper',  **d) for d in all_income[upper_idx]]
+    )
+    expense_detail: List[ExpenseDetail] = (
+        [ExpenseDetail(band='lower',  **d) for d in all_expense[lower_idx]] +
+        [ExpenseDetail(band='median', **d) for d in all_expense[median_idx]] +
+        [ExpenseDetail(band='upper',  **d) for d in all_expense[upper_idx]]
+    )
+    return_detail: List[ReturnDetail] = (
+        [ReturnDetail(band='lower',  **d) for d in all_return[lower_idx]] +
+        [ReturnDetail(band='median', **d) for d in all_return[median_idx]] +
+        [ReturnDetail(band='upper',  **d) for d in all_return[upper_idx]]
+    )
 
     return SimulationResult(
         success_rate=success_rate,
@@ -438,4 +494,5 @@ def simulate(
         annual_detail=annual_detail,
         income_detail=income_detail,
         expense_detail=expense_detail,
+        return_detail=return_detail,
     )

@@ -168,13 +168,14 @@ class TestSimulateStructure:
             assert pt.p_lower <= pt.p50 <= pt.p_upper
 
     def test_account_timeline_length(self):
-        # 1 account × HORIZON ages
+        # 3 bands × 1 account × HORIZON ages
         r = simulate(self.PLAN, cfg(num_runs=50), seed=0)
-        assert len(r.account_timeline) == 1 * self.HORIZON
+        assert len(r.account_timeline) == 3 * self.HORIZON
 
     def test_annual_detail_length(self):
         r = simulate(self.PLAN, cfg(num_runs=50), seed=0)
-        assert len(r.annual_detail) == self.HORIZON
+        # 3 bands × HORIZON ages
+        assert len(r.annual_detail) == 3 * self.HORIZON
 
     def test_annual_detail_fields(self):
         r = simulate(self.PLAN, cfg(num_runs=50), seed=0)
@@ -298,7 +299,7 @@ class TestSimulateEconomics:
         assert all(d.tax_federal_ordinary == 0.0 for d in r.annual_detail)
 
     def test_inflation_increases_expenses_over_time(self):
-        """Expense detail amounts should grow each year with inflation."""
+        """Expense detail amounts should grow each year with inflation (median band)."""
         plan = make_plan(
             current_age=65,
             horizon=10,
@@ -306,7 +307,7 @@ class TestSimulateEconomics:
             expenses=[ExpenseInput("Living", 50_000, 65, 74, inflation_rate=0.03)],
         )
         r = simulate(plan, cfg(num_runs=50), seed=0)
-        exp_amounts = [d.amount for d in r.expense_detail]
+        exp_amounts = [d.amount for d in r.expense_detail if d.band == 'median']
         # Amounts should be monotonically non-decreasing
         assert all(exp_amounts[i] <= exp_amounts[i + 1] for i in range(len(exp_amounts) - 1))
 
@@ -335,7 +336,7 @@ class TestSimulateEconomics:
             expenses=[ExpenseInput("Living", 40_000, 65, 69, 0.0)],
         )
         r = simulate(plan, cfg(num_runs=50), seed=0)
-        # 3 accounts × 5 ages = 15 entries
-        assert len(r.account_timeline) == 15
+        # 3 bands × 3 accounts × 5 ages = 45 entries
+        assert len(r.account_timeline) == 45
         names = {pt.account_name for pt in r.account_timeline}
         assert names == {"Trad", "Brok", "Cash"}
