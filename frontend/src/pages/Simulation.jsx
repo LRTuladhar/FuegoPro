@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getPlan, runSimulation, getSimulationResults } from '../api/client'
 import SuccessRate from '../components/simulation/SuccessRate'
@@ -19,10 +19,13 @@ export default function Simulation() {
   const [error, setError] = useState(null)
   const [simConfig, setSimConfig] = useState(null)
   const [band, setBand] = useState('median')
+  const [viewMode, setViewMode] = useState('statistical')
 
   // Initialise local config from global defaults once available
   useEffect(() => {
-    if (globalLoaded && simConfig === null) setSimConfig({ ...globalConfig })
+    if (globalLoaded && simConfig === null) {
+      setSimConfig({ ...globalConfig, initialRegime: 'random' })
+    }
   }, [globalLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -38,6 +41,24 @@ export default function Simulation() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // Build representative run portfolio timeline from account_timeline.
+  // For each age, sum balances across all accounts per band.
+  const representativeTimeline = useMemo(() => {
+    if (!results?.account_timeline?.length) return []
+    const byBandAge = {}
+    results.account_timeline.forEach((p) => {
+      const key = `${p.band}:${p.age}`
+      byBandAge[key] = (byBandAge[key] ?? 0) + p.balance
+    })
+    const ages = [...new Set(results.account_timeline.map((p) => p.age))].sort((a, b) => a - b)
+    return ages.map((age) => ({
+      age,
+      p_lower: byBandAge[`lower:${age}`]  ?? 0,
+      p50:     byBandAge[`median:${age}`] ?? 0,
+      p_upper: byBandAge[`upper:${age}`]  ?? 0,
+    }))
+  }, [results?.account_timeline])
+
   const configInvalid = !simConfig || simConfig.lowerPct >= simConfig.upperPct
 
   const handleRun = async () => {
@@ -49,6 +70,7 @@ export default function Simulation() {
         num_runs: simConfig.numRuns,
         lower_percentile: simConfig.lowerPct,
         upper_percentile: simConfig.upperPct,
+        initial_market_regime: simConfig.initialRegime === 'random' ? undefined : simConfig.initialRegime,
       })
       setResults(res.data)
     } catch (e) {
@@ -131,13 +153,18 @@ export default function Simulation() {
           <div style={group}>
             <PercentileBandChart
               data={results.portfolio_timeline}
+              representativeData={representativeTimeline}
               lower={results.lower_percentile}
               upper={results.upper_percentile}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
             />
             <PortfolioSection
               data={results.portfolio_timeline}
+              representativeData={representativeTimeline}
               lower={results.lower_percentile}
               upper={results.upper_percentile}
+              viewMode={viewMode}
             />
           </div>
 
@@ -147,6 +174,13 @@ export default function Simulation() {
               Band Selection
             </span>
             <BandSelector value={band} onChange={setBand} />
+            <button
+              onClick={() => navigate(`/plans/${id}/simulate/debug?band=${band}`)}
+              style={{ ...btn('secondary'), marginLeft: 'auto', ...(results ? {} : { opacity: 0.45, cursor: 'not-allowed' }) }}
+              disabled={!results}
+            >
+              Debug Table
+            </button>
           </div>
 
           {/* Group 2: Account balances chart + detail tables */}

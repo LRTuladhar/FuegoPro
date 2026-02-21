@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey,
-    Integer, String, UniqueConstraint,
+    Integer, JSON, String, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -89,13 +89,14 @@ class SimulationResult(Base):
     __tablename__ = "simulation_results"
     __table_args__ = (UniqueConstraint("plan_id"),)
 
-    id               = Column(Integer, primary_key=True, autoincrement=True)
-    plan_id          = Column(Integer, ForeignKey("plans.id", ondelete="CASCADE"), nullable=False)
-    num_runs         = Column(Integer, nullable=False)
-    lower_percentile = Column(Integer, nullable=False)
-    upper_percentile = Column(Integer, nullable=False)
-    success_rate     = Column(Float, nullable=False)
-    created_at       = Column(DateTime, default=datetime.utcnow)
+    id                     = Column(Integer, primary_key=True, autoincrement=True)
+    plan_id                = Column(Integer, ForeignKey("plans.id", ondelete="CASCADE"), nullable=False)
+    num_runs               = Column(Integer, nullable=False)
+    lower_percentile       = Column(Integer, nullable=False)
+    upper_percentile       = Column(Integer, nullable=False)
+    success_rate           = Column(Float, nullable=False)
+    representative_returns = Column(JSON, nullable=True)  # {'lower': [...], 'median': [...], 'upper': [...]}
+    created_at             = Column(DateTime, default=datetime.utcnow)
 
     plan              = relationship("Plan", back_populates="simulation_result")
     portfolio_timeline = relationship("SimulationPortfolioTimeline", back_populates="result",

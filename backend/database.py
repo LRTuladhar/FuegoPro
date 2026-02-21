@@ -35,8 +35,19 @@ def get_db():
 
 def init_db():
     """Create all tables and seed default simulation config if not present."""
+    from sqlalchemy import inspect, text
     from models.db_models import Base, SimulationConfig  # noqa: F401
     Base.metadata.create_all(bind=engine)
+
+    # Migrate: add representative_returns column if it doesn't exist yet
+    inspector = inspect(engine)
+    existing_cols = {c["name"] for c in inspector.get_columns("simulation_results")}
+    if "representative_returns" not in existing_cols:
+        with engine.connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE simulation_results ADD COLUMN representative_returns TEXT"
+            ))
+            conn.commit()
 
     # Seed the single simulation_config row if it doesn't exist yet
     db = SessionLocal()

@@ -4,12 +4,16 @@
  * only when the config is valid.
  */
 export default function SimConfigPanel({ config, onChange }) {
-  const { numRuns, lowerPct, upperPct } = config
+  const { numRuns, lowerPct, upperPct, initialRegime = 'random' } = config
   const invalid = lowerPct >= upperPct
 
   const set = (key, raw) => {
     const val = parseInt(raw, 10)
     if (!isNaN(val)) onChange({ ...config, [key]: val })
+  }
+
+  const setRegime = (regime) => {
+    onChange({ ...config, initialRegime: regime })
   }
 
   return (
@@ -64,6 +68,31 @@ export default function SimConfigPanel({ config, onChange }) {
             style={{ ...inputStyle, width: 60 }}
           />
           <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>%</span>
+        </div>
+      </Field>
+
+      <Field label="Initial Market">
+        <div style={{ display: 'flex', gap: 6 }}>
+          {['random', 'bear', 'bull'].map((option) => (
+            <button
+              key={option}
+              onClick={() => setRegime(option)}
+              style={{
+                padding: '0.4rem 0.8rem',
+                borderRadius: 5,
+                border: '1px solid #334155',
+                fontSize: '0.8rem',
+                fontWeight: 500,
+                cursor: 'pointer',
+                textTransform: 'capitalize',
+                background: initialRegime === option ? '#3b82f6' : '#0f172a',
+                color: initialRegime === option ? '#fff' : '#94a3b8',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {option === 'random' ? 'Random' : option === 'bear' ? 'Bear start' : 'Bull start'}
+            </button>
+          ))}
         </div>
       </Field>
 

@@ -15,6 +15,7 @@ export const duplicatePlan = (id)       => api.post(`/plans/${id}/duplicate`)
 // Simulation
 export const runSimulation        = (planId, params = {}) => api.post(`/simulate/${planId}`, null, { params })
 export const getSimulationResults = (planId) => api.get(`/simulate/${planId}/results`)
+export const getSimulationDebug   = (planId, band = 'median') => api.get(`/simulate/${planId}/debug`, { params: { band } })
 export const compareSimulations   = (planIds, body = {}) => api.post('/simulate/compare', { plan_ids: planIds, ...body })
 
 // Config

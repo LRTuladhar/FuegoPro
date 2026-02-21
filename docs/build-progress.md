@@ -261,4 +261,48 @@ Track of all build steps, their status, and key files produced.
 
 ---
 
-*Last updated: Steps 11 and 12 complete — application fully implemented*
+## Step 13 — Bear/Bull Market Regime Feature ✅
+
+**Goal:** Add market regime control to the simulation. Users can optionally specify an initial market regime (Bear, Bull, or Random) for the first year; subsequent years follow a Markov chain with historically-calibrated transition probabilities.
+
+**Completed:**
+
+**Backend:**
+- Regime classification logic added to `historic_returns.py`:
+  - Pre-computes `BEAR_START_INDICES` and `BULL_START_INDICES` at module startup by classifying all 12-month windows as bear (< 0% annual return) or bull (≥ 0%)
+  - Empirically computes `P_BULL_STAY` and `P_BEAR_STAY` from non-overlapping annual windows
+- `sample_annual_returns()` signature updated to accept optional `first_year_regime: Optional[str]` parameter
+  - When `'bear'` or `'bull'`: year 0 samples from that regime's pool; years 1+ follow Markov chain transitions
+  - When `None`: unchanged block-bootstrap behavior (backward compatible)
+- `SimulationConfig` dataclass updated with `initial_market_regime: Optional[str] = None` field
+- Both simulation endpoints (`POST /api/simulate/{plan_id}` and `POST /api/simulate/compare`) accept `initial_market_regime` query/body parameter with validation
+
+**Frontend:**
+- `SimConfigPanel.jsx` (simulation-specific) updated with a 3-button toggle: "Random", "Bear start", "Bull start"
+- `Simulation.jsx` initializes local `simConfig` with `initialRegime: 'random'`; passes `initial_market_regime` to API
+- `Compare.jsx` similarly adds regime toggle in inline config row; passes `initial_market_regime` to compare endpoint
+- All state wiring preserves backward compatibility: "Random" omits the parameter (defaults to None on backend)
+
+**Testing:**
+- 10 new unit tests added to `tests/test_historic_returns.py`:
+  - Verify `BEAR_START_INDICES` and `BULL_START_INDICES` are non-empty
+  - Verify all indices in each pool produce the expected sign of annual returns
+  - Verify transition probabilities are in [0, 1]
+  - Test regime-constrained sampling (bear/bull first year always produces negative/non-negative)
+  - Test Markov transition logic
+  - Test error handling for invalid regime values
+- **All 27 tests pass** (17 original + 10 new)
+
+**Key files modified/added:**
+- `backend/data/historic_returns.py` — regime classification, Markov logic, enhanced `sample_annual_returns()`
+- `backend/services/simulation.py` — `SimulationConfig` updated with regime field
+- `backend/routers/simulation.py` — both endpoints updated with regime parameter and validation
+- `backend/models/schemas.py` — `CompareRequest` schema updated
+- `frontend/src/components/simulation/SimConfigPanel.jsx` — regime toggle UI added
+- `frontend/src/pages/Simulation.jsx` — regime state + API wiring
+- `frontend/src/pages/Compare.jsx` — regime state + API wiring
+- `backend/tests/test_historic_returns.py` — 10 new regime tests
+
+---
+
+*Last updated: Step 13 complete — Bear/Bull market regime feature fully implemented*

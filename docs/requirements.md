@@ -186,15 +186,37 @@ When funds are needed to cover expenses, the simulation draws from accounts in t
   - Update account balances
 - A run "fails" if the total portfolio balance reaches $0 before the planning horizon
 
-### 7.3 Simulation Configuration (Global)
+### 7.2a Market Regime Control
 
-These settings apply across all plans being compared:
+Users can optionally specify an initial market regime to stress-test or model specific scenarios:
+
+**Initial Market Selection** (per-simulation parameter, not persisted):
+- **Random** (default) — Year 1 returns sampled uniformly from all historical years
+- **Bear start** — Year 1 constrained to a historically bear market year (negative annual return)
+- **Bull start** — Year 1 constrained to a historically bull market year (non-negative annual return)
+
+**Markov Chain Transitions** (Years 2+):
+- For "Bear start" or "Bull start" scenarios, years 2 through N transition stochastically via a Markov chain
+- Transition probabilities (P(bull|bull), P(bear|bear)) are empirically derived from non-overlapping annual windows in the historical S&P 500 data
+- This creates realistic regime persistence: bull markets tend to persist, bear markets tend to be shorter-lived
+- Example: ~75% probability a bull year is followed by another bull year; ~55% probability a bear year is followed by another bear year
+- "Random" mode is unaffected and uses the original block bootstrap sampling for all years
+
+### 7.3 Simulation Configuration
+
+**Global Settings** (apply across all plans being compared):
 
 | Parameter | Default | Range |
 |-----------|---------|-------|
 | Number of runs | 1,000 | 100 – 10,000 |
 | Lower percentile band | 10th | 1st – 49th |
 | Upper percentile band | 90th | 51st – 99th |
+
+**Per-Run Settings** (can be set for each simulation run):
+
+| Parameter | Default | Options |
+|-----------|---------|---------|
+| Initial market regime | Random | Random, Bear start, Bull start |
 
 ---
 

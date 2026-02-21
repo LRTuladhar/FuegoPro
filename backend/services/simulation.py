@@ -80,9 +80,10 @@ class PlanInputs:
 
 @dataclass
 class SimulationConfig:
-    num_runs:         int = 1000
-    lower_percentile: int = 10
-    upper_percentile: int = 90
+    num_runs:              int = 1000
+    lower_percentile:      int = 10
+    upper_percentile:      int = 90
+    initial_market_regime: Optional[str] = None  # 'bear' | 'bull' | None
 
 
 # ---------------------------------------------------------------------------
@@ -143,13 +144,14 @@ class ReturnDetail:
 
 @dataclass
 class SimulationResult:
-    success_rate:       float
-    portfolio_timeline: List[AgePortfolioPoint]
-    account_timeline:   List[AgeAccountPoint]
-    annual_detail:      List[AnnualDetail]
-    income_detail:      List[IncomeDetail]
-    expense_detail:     List[ExpenseDetail]
-    return_detail:      List[ReturnDetail]
+    success_rate:            float
+    portfolio_timeline:      List[AgePortfolioPoint]
+    account_timeline:        List[AgeAccountPoint]
+    annual_detail:           List[AnnualDetail]
+    income_detail:           List[IncomeDetail]
+    expense_detail:          List[ExpenseDetail]
+    return_detail:           List[ReturnDetail]
+    representative_returns:  dict  # {'lower': [...], 'median': [...], 'upper': [...]}
 
 
 # ---------------------------------------------------------------------------
@@ -160,9 +162,17 @@ def _simulate_one_run(
     plan:          PlanInputs,
     accounts:      List[AccountState],   # already deep-copied for this run
     stock_returns: np.ndarray,           # pre-sampled annual returns, shape (num_ages,)
-) -> Tuple[bool, np.ndarray, np.ndarray, List[dict], List[dict], List[dict], List[dict]]:
+    capture_debug: bool = False,
+) -> Tuple[bool, np.ndarray, np.ndarray, List[dict], List[dict], List[dict], List[dict], Optional[List[dict]]]:
     """
     Simulate one sequence of annual market returns for the full planning horizon.
+
+    Parameters
+    ----------
+    plan          : PlanInputs with user configuration
+    accounts      : List[AccountState], already deep-copied for this run
+    stock_returns : pre-sampled annual returns, shape (num_ages,)
+    capture_debug : if True, capture detailed per-year calculations
 
     Returns
     -------
@@ -173,6 +183,7 @@ def _simulate_one_run(
     income_details  : list of dicts, one per active income source per year.
     expense_details : list of dicts, one per active expense per year.
     return_details  : list of dicts, one per account per year.
+    debug_rows      : list of detailed per-year dicts (or None if capture_debug=False).
     """
     num_ages    = plan.planning_horizon
     n_accts     = len(accounts)
@@ -184,10 +195,14 @@ def _simulate_one_run(
     income_details:  List[dict] = []
     expense_details: List[dict] = []
     return_details:  List[dict] = []
+    debug_rows:      List[dict] = [] if capture_debug else None
     survived = True
 
     # References to traditional accounts; reused each year for RMDs / 401k pulls.
     traditional = [a for a in accounts if a.tax_treatment == "traditional"]
+
+    # Track per-account RMDs for debug output
+    rmd_by_account = {}
 
     for age_idx in range(num_ages):
         age           = current_age + age_idx
@@ -239,9 +254,11 @@ def _simulate_one_run(
         # Must be taken regardless of need; any excess covers expenses.
         # -------------------------------------------------------------------
         rmd_total = 0.0
+        rmd_by_account = {}  # Reset for this year
         for acct in traditional:
             rmd    = calculate_rmd(acct.balance, age)
             actual = min(rmd, acct.balance)
+            rmd_by_account[acct.id] = actual  # Track for debug
             if actual > 0.0:
                 acct.balance -= actual
                 rmd_total    += actual
@@ -263,6 +280,11 @@ def _simulate_one_run(
         # -------------------------------------------------------------------
         available_income  = other_ordinary + other_nontaxable + ss_gross + rmd_total
         expense_shortfall = max(0.0, total_expenses - available_income)
+
+        # Snapshot balances before expense withdrawal (for per-account debug)
+        if capture_debug:
+            pre_expense_snap = {acct.id: acct.balance for acct in accounts}
+
         wr_expense        = withdraw_for_shortfall(accounts, expense_shortfall)
 
         if wr_expense.shortfall > 0.0:
@@ -303,6 +325,10 @@ def _simulate_one_run(
         cash_after_expenses = available_income + wr_expense.total_withdrawn - total_expenses
         tax_shortfall       = max(0.0, total_tax - cash_after_expenses)
 
+        # Snapshot balances before tax withdrawal (for per-account debug)
+        if capture_debug:
+            pre_tax_snap = {acct.id: acct.balance for acct in accounts}
+
         if tax_shortfall > 0.0:
             wr_tax = withdraw_for_shortfall(accounts, tax_shortfall)
             if wr_tax.shortfall > 0.0:
@@ -341,7 +367,139 @@ def _simulate_one_run(
             "effective_tax_rate":   eff_rate,
         })
 
-    return survived, portfolio_vals, account_vals, annual_details, income_details, expense_details, return_details
+        # -------------------------------------------------------------------
+        # Debug capture: detailed per-year intermediate values
+        # -------------------------------------------------------------------
+        if capture_debug:
+            # Build per-account detail
+            account_rows = []
+            for ai, acct in enumerate(accounts):
+                growth_rate = stock_return if acct.asset_class == "stocks" else acct.annual_return_rate
+                rmd_amt = rmd_by_account.get(acct.id, 0.0)
+                end_bal = account_vals[ai, age_idx]
+
+                # Compute balance before growth by reversing growth calculation
+                if growth_rate != 0:
+                    bal_before_growth = end_bal / (1.0 + growth_rate)
+                else:
+                    bal_before_growth = end_bal
+
+                # Per-account withdrawal amounts derived from balance snapshots
+                withdrawn_expense = pre_expense_snap.get(acct.id, 0.0) - pre_tax_snap.get(acct.id, 0.0)
+                withdrawn_tax     = pre_tax_snap.get(acct.id, 0.0) - bal_before_growth
+
+                account_rows.append({
+                    "account_id":         acct.id,
+                    "account_name":       acct.name,
+                    "tax_treatment":      acct.tax_treatment,
+                    "asset_class":        acct.asset_class,
+                    "start_balance":      pre_expense_snap.get(acct.id, 0.0),
+                    "growth_rate":        growth_rate,
+                    "rmd_amount":         rmd_amt,
+                    "end_balance":        end_bal,
+                    "withdrawn_expense":  max(0.0, withdrawn_expense),
+                    "withdrawn_tax":      max(0.0, withdrawn_tax),
+                })
+
+            # Build income detail for this year
+            income_sources_detail = []
+            for src in plan.income_sources:
+                if src.start_age <= age <= src.end_age:
+                    income_sources_detail.append({
+                        "name":           src.name,
+                        "income_type":    src.income_type,
+                        "gross_amount":   src.annual_amount,
+                        "is_active":      True,
+                    })
+            # Step 1b bond interest: taxable brokerage bond accounts generate
+            # ordinary income each year. Balance at Step 1b equals pre_expense_snap
+            # for brokerage accounts (RMDs do not apply to them).
+            for acct in accounts:
+                if acct.tax_treatment == "taxable_brokerage" and acct.asset_class == "bonds":
+                    bal_at_1b = pre_expense_snap.get(acct.id, 0.0)
+                    interest  = bal_at_1b * acct.annual_return_rate
+                    if interest > 0.0:
+                        income_sources_detail.append({
+                            "name":        f"{acct.name} Interest",
+                            "income_type": "bond_interest",
+                            "gross_amount": interest,
+                            "is_active":   True,
+                        })
+
+            # Build expense detail for this year
+            expense_items_detail = []
+            for exp in plan.expenses:
+                if exp.start_age <= age <= exp.end_age:
+                    adjusted = exp.annual_amount * ((1.0 + exp.inflation_rate) ** years_elapsed)
+                    expense_items_detail.append({
+                        "name":            exp.name,
+                        "base_amount":     exp.annual_amount,
+                        "inflation_rate":  exp.inflation_rate,
+                        "adjusted_amount": adjusted,
+                        "is_active":       True,
+                    })
+
+            # Compute tax withdrawal info
+            tax_withdrawal_info = {
+                "tax_shortfall":    tax_shortfall,
+                "total_withdrawn":  0.0,
+                "ordinary_income":  0.0,
+                "ltcg_income":      0.0,
+                "shortfall":        0.0,
+            }
+            if tax_shortfall > 0.0 and 'wr_tax' in locals():
+                tax_withdrawal_info = {
+                    "tax_shortfall":    tax_shortfall,
+                    "total_withdrawn":  wr_tax.total_withdrawn,
+                    "ordinary_income":  wr_tax.ordinary_income,
+                    "ltcg_income":      wr_tax.ltcg_income,
+                    "shortfall":        wr_tax.shortfall,
+                }
+
+            # Build the complete debug row for this age
+            debug_row = {
+                "age":              age,
+                "accounts":         account_rows,
+                "income": {
+                    "sources":                  income_sources_detail,
+                    "ss_gross":                 ss_gross,
+                    "ss_fraction":              ss_fraction,
+                    "taxable_ss":               taxable_ss,
+                    "provisional_income":       provisional,
+                    "rmd_total":                rmd_total,
+                    "total_gross_income":       available_income,
+                    "other_ordinary":           other_ordinary,
+                    "other_nontaxable":         other_nontaxable,
+                    "available_income":         available_income,
+                },
+                "expenses": {
+                    "items":          expense_items_detail,
+                    "total_expenses": total_expenses,
+                },
+                "expense_withdrawal": {
+                    "net_need":       expense_shortfall,
+                    "total_withdrawn": wr_expense.total_withdrawn,
+                    "ordinary_income": wr_expense.ordinary_income,
+                    "ltcg_income":     wr_expense.ltcg_income,
+                    "shortfall":       wr_expense.shortfall,
+                },
+                "tax": {
+                    "total_ordinary_income": total_ordinary,
+                    "total_ltcg_income":     ltcg_income,
+                    "state_taxable_income":  state_taxable,
+                    "federal_ordinary_tax":  fed_ordinary_only,
+                    "federal_ltcg_tax":      fed_ltcg,
+                    "state_tax":             state_tax,
+                    "total_tax":             total_tax,
+                    "effective_tax_rate":    eff_rate,
+                },
+                "tax_withdrawal":  tax_withdrawal_info,
+                "portfolio_end":   portfolio_vals[age_idx],
+                "failed":          not survived,
+            }
+            debug_rows.append(debug_row)
+
+    return survived, portfolio_vals, account_vals, annual_details, income_details, expense_details, return_details, debug_rows
 
 
 # ---------------------------------------------------------------------------
@@ -373,8 +531,9 @@ def simulate(
     n_accts  = len(plan.accounts)
 
     # Pre-allocate arrays for all runs
-    all_portfolio = np.zeros((config.num_runs, num_ages))
-    all_accounts  = np.zeros((config.num_runs, n_accts, num_ages))
+    all_portfolio     = np.zeros((config.num_runs, num_ages))
+    all_accounts      = np.zeros((config.num_runs, n_accts, num_ages))
+    all_stock_returns = np.zeros((config.num_runs, num_ages))
 
     successes  = 0
     all_annual:  List[List[dict]] = []
@@ -384,7 +543,10 @@ def simulate(
 
     for run_idx in range(config.num_runs):
         # Sample a full sequence of annual stock returns for this run
-        stock_returns = sample_annual_returns(num_ages, rng)
+        stock_returns = sample_annual_returns(
+            num_ages, rng, first_year_regime=config.initial_market_regime
+        )
+        all_stock_returns[run_idx] = stock_returns
 
         # Deep-copy account balances so each run starts from the same position
         accounts_copy = [
@@ -401,10 +563,11 @@ def simulate(
             for a in plan.accounts
         ]
 
-        survived, pv, av, ann_det, inc_det, exp_det, ret_det = _simulate_one_run(
+        survived, pv, av, ann_det, inc_det, exp_det, ret_det, _ = _simulate_one_run(
             plan=plan,
             accounts=accounts_copy,
             stock_returns=stock_returns,
+            capture_debug=False,
         )
 
         if survived:
@@ -487,6 +650,12 @@ def simulate(
         [ReturnDetail(band='upper',  **d) for d in all_return[upper_idx]]
     )
 
+    representative_returns = {
+        'lower':  all_stock_returns[lower_idx].tolist(),
+        'median': all_stock_returns[median_idx].tolist(),
+        'upper':  all_stock_returns[upper_idx].tolist(),
+    }
+
     return SimulationResult(
         success_rate=success_rate,
         portfolio_timeline=portfolio_timeline,
@@ -495,4 +664,41 @@ def simulate(
         income_detail=income_detail,
         expense_detail=expense_detail,
         return_detail=return_detail,
+        representative_returns=representative_returns,
     )
+
+
+def simulate_debug(
+    plan:          PlanInputs,
+    stock_returns: Optional[np.ndarray] = None,
+) -> List[dict]:
+    """
+    Run a single simulation with full debug capture.
+
+    If stock_returns is provided (a pre-computed return sequence from a
+    representative run), that sequence is used directly — reproducing the
+    exact run stored in the simulation result.  If omitted, a fresh random
+    sequence is generated with seed=42 for fallback use.
+
+    Returns
+    -------
+    List[dict] : one dict per simulated year with full calculation details
+    """
+    import copy
+
+    num_ages = plan.planning_horizon
+
+    if stock_returns is None:
+        rng = np.random.default_rng(42)
+        stock_returns = sample_annual_returns(num_ages, rng, first_year_regime=None)
+
+    accounts_copy = [copy.deepcopy(a) for a in plan.accounts]
+
+    _, _, _, _, _, _, _, debug_rows = _simulate_one_run(
+        plan=plan,
+        accounts=accounts_copy,
+        stock_returns=stock_returns,
+        capture_debug=True,
+    )
+
+    return debug_rows

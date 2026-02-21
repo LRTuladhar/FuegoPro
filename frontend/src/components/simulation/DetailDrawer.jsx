@@ -122,13 +122,20 @@ function CashflowTable({ annualDetail, incomeDetail, expenseDetail, accountTimel
 // ---------------------------------------------------------------------------
 // Portfolio value table (median run + percentile bounds)
 // ---------------------------------------------------------------------------
-function PortfolioTable({ data, lower, upper }) {
+function PortfolioTable({ data, lower, upper, viewMode = 'statistical' }) {
   if (!data || data.length === 0) return <Empty />
+  const isRep = viewMode === 'representative'
+  const headers = [
+    'Age',
+    isRep ? 'Lower Run'  : `${lower}th Pct`,
+    isRep ? 'Median Run' : 'Median (p50)',
+    isRep ? 'Upper Run'  : `${upper}th Pct`,
+  ]
   return (
     <table style={tableStyle}>
       <thead>
         <tr style={{ background: '#162032' }}>
-          {['Age', `${lower}th Pct`, 'Median (p50)', `${upper}th Pct`].map((h) => (
+          {headers.map((h) => (
             <th key={h} style={th}>{h}</th>
           ))}
         </tr>
@@ -323,10 +330,13 @@ function Empty() {
 // Portfolio section — exported separately so Simulation.jsx can place it
 // next to the portfolio chart
 // ---------------------------------------------------------------------------
-export function PortfolioSection({ data, lower, upper }) {
+export function PortfolioSection({ data, representativeData, lower, upper, viewMode = 'statistical' }) {
+  const isRep = viewMode === 'representative'
+  const tableData = isRep ? (representativeData ?? []) : (data ?? [])
+  const title = isRep ? 'Portfolio Value (Scenario Runs)' : 'Portfolio Value (All Bands)'
   return (
-    <Section title="Portfolio Value (All Bands)">
-      <PortfolioTable data={data} lower={lower} upper={upper} />
+    <Section title={title}>
+      <PortfolioTable data={tableData} lower={lower} upper={upper} viewMode={viewMode} />
     </Section>
   )
 }

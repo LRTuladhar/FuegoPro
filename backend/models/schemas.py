@@ -203,6 +203,7 @@ class SimulationResultOut(BaseModel):
     lower_percentile: int
     upper_percentile: int
     created_at: datetime
+    representative_returns: Optional[dict] = None  # {'lower': [...], 'median': [...], 'upper': [...]}
     portfolio_timeline: list[PortfolioTimelinePoint] = []
     account_timeline: list[AccountTimelinePoint] = []
     annual_detail: list[AnnualDetailOut] = []
@@ -233,6 +234,7 @@ class CompareRequest(BaseModel):
     num_runs: Optional[int] = None
     lower_percentile: Optional[int] = None
     upper_percentile: Optional[int] = None
+    initial_market_regime: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -252,3 +254,91 @@ class SimConfigUpdate(BaseModel):
     num_runs: int
     lower_percentile: int
     upper_percentile: int
+
+
+# ---------------------------------------------------------------------------
+# Debug/Validation Simulation
+# ---------------------------------------------------------------------------
+
+class DebugIncomeSource(BaseModel):
+    name: str
+    income_type: str
+    gross_amount: float
+    is_active: bool
+
+
+class DebugIncomeDetail(BaseModel):
+    sources: list[DebugIncomeSource] = []
+    ss_gross: float
+    ss_fraction: float
+    taxable_ss: float
+    provisional_income: float
+    rmd_total: float
+    total_gross_income: float
+    other_ordinary: float
+    other_nontaxable: float
+    available_income: float
+
+
+class DebugExpenseItem(BaseModel):
+    name: str
+    base_amount: float
+    inflation_rate: float
+    adjusted_amount: float
+    is_active: bool
+
+
+class DebugExpenseDetail(BaseModel):
+    items: list[DebugExpenseItem] = []
+    total_expenses: float
+
+
+class DebugWithdrawal(BaseModel):
+    net_need: Optional[float] = None
+    tax_shortfall: Optional[float] = None
+    total_withdrawn: float
+    ordinary_income: float
+    ltcg_income: float
+    shortfall: float
+
+
+class DebugTaxDetail(BaseModel):
+    total_ordinary_income: float
+    total_ltcg_income: float
+    state_taxable_income: float
+    federal_ordinary_tax: float
+    federal_ltcg_tax: float
+    state_tax: float
+    total_tax: float
+    effective_tax_rate: float
+
+
+class DebugAccountDetail(BaseModel):
+    account_id: int
+    account_name: str
+    tax_treatment: str
+    asset_class: str
+    start_balance: float
+    growth_rate: float
+    rmd_amount: float
+    end_balance: float
+    withdrawn_expense: float
+    withdrawn_tax: float
+
+
+class DebugAgeRow(BaseModel):
+    age: int
+    accounts: list[DebugAccountDetail] = []
+    income: DebugIncomeDetail
+    expenses: DebugExpenseDetail
+    expense_withdrawal: DebugWithdrawal
+    tax: DebugTaxDetail
+    tax_withdrawal: DebugWithdrawal
+    portfolio_end: float
+    failed: bool
+
+
+class DebugResultOut(BaseModel):
+    plan_id: int
+    band: str
+    age_rows: list[DebugAgeRow] = []

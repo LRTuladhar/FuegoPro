@@ -9,15 +9,54 @@ const fmt = (v) => {
   return `$${v}`
 }
 
-export default function PercentileBandChart({ data, lower, upper }) {
+export default function PercentileBandChart({
+  data,               // statistical cross-sectional percentile data
+  representativeData, // per-band representative run totals
+  lower,
+  upper,
+  viewMode = 'statistical',
+  onViewModeChange,
+}) {
+  const isRep = viewMode === 'representative'
+  const chartData = isRep ? (representativeData ?? []) : (data ?? [])
+
   return (
     <div style={card}>
-      <h2 style={heading}>Portfolio Value — Percentile Range</h2>
-      <p style={{ margin: '-0.5rem 0 1rem', fontSize: '0.8rem', color: '#94a3b8' }}>
-        Median (solid) with {lower}th / {upper}th percentile bounds (dashed)
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
+        <h2 style={heading}>Portfolio Value</h2>
+        {onViewModeChange && (
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[
+              { key: 'statistical',    label: 'Statistical' },
+              { key: 'representative', label: 'Scenarios'   },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => onViewModeChange(key)}
+                style={{
+                  padding: '0.25rem 0.65rem',
+                  borderRadius: 4,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  background: viewMode === key ? '#f97316' : '#334155',
+                  color:      viewMode === key ? '#fff'    : '#94a3b8',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <p style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+        {isRep
+          ? `Three complete runs ranked by final portfolio value (lower / median / upper)`
+          : `Median (solid) with ${lower}th / ${upper}th percentile bounds (dashed)`}
       </p>
       <ResponsiveContainer width="100%" height={320}>
-        <LineChart data={data} margin={{ top: 4, right: 24, bottom: 16, left: 16 }}>
+        <LineChart data={chartData} margin={{ top: 4, right: 24, bottom: 16, left: 16 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
           <XAxis
             dataKey="age"
@@ -36,7 +75,7 @@ export default function PercentileBandChart({ data, lower, upper }) {
           <Line
             type="monotone"
             dataKey="p_upper"
-            name={`${upper}th pct`}
+            name={isRep ? 'Upper run' : `${upper}th pct`}
             stroke="#93c5fd"
             strokeWidth={1.5}
             strokeDasharray="5 3"
@@ -45,7 +84,7 @@ export default function PercentileBandChart({ data, lower, upper }) {
           <Line
             type="monotone"
             dataKey="p50"
-            name="Median (p50)"
+            name={isRep ? 'Median run' : 'Median (p50)'}
             stroke="#60a5fa"
             strokeWidth={2.5}
             dot={false}
@@ -53,7 +92,7 @@ export default function PercentileBandChart({ data, lower, upper }) {
           <Line
             type="monotone"
             dataKey="p_lower"
-            name={`${lower}th pct`}
+            name={isRep ? 'Lower run' : `${lower}th pct`}
             stroke="#f97316"
             strokeWidth={1.5}
             strokeDasharray="5 3"

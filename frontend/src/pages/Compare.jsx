@@ -21,7 +21,7 @@ export default function Compare() {
 
   // Initialise simConfig from global context once loaded
   useEffect(() => {
-    if (simConfig === null) setSimConfig({ ...globalConfig })
+    if (simConfig === null) setSimConfig({ ...globalConfig, initialRegime: 'random' })
   }, [globalConfig]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -42,6 +42,7 @@ export default function Compare() {
         num_runs: simConfig.numRuns,
         lower_percentile: simConfig.lowerPct,
         upper_percentile: simConfig.upperPct,
+        initial_market_regime: simConfig.initialRegime === 'random' ? null : simConfig.initialRegime,
       })
       setResults(res.data)
     } catch (e) {
@@ -151,6 +152,30 @@ export default function Compare() {
               onChange={e => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setSimConfig(s => ({ ...s, upperPct: v })) }}
               style={{ ...numInput, width: 56 }} />
             <span style={{ color: '#94a3b8', marginLeft: 4 }}>%</span>
+          </ConfigField>
+          <ConfigField label="Market">
+            <div style={{ display: 'flex', gap: 4 }}>
+              {['random', 'bear', 'bull'].map((option) => (
+                <button
+                  key={option}
+                  onClick={() => setSimConfig(s => ({ ...s, initialRegime: option }))}
+                  style={{
+                    padding: '0.3rem 0.6rem',
+                    borderRadius: 4,
+                    border: '1px solid #334155',
+                    fontSize: '0.7rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    textTransform: 'capitalize',
+                    background: simConfig.initialRegime === option ? '#3b82f6' : '#0f172a',
+                    color: simConfig.initialRegime === option ? '#fff' : '#94a3b8',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {option === 'random' ? 'Random' : option === 'bear' ? 'Bear' : 'Bull'}
+                </button>
+              ))}
+            </div>
           </ConfigField>
           {simConfig.lowerPct >= simConfig.upperPct && (
             <span style={{ color: '#f87171', fontSize: '0.8rem' }}>Lower must be less than upper.</span>

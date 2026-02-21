@@ -11,6 +11,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload
 
+import numpy as np
+
 from database import get_db
 from models.db_models import (
     Plan,
@@ -23,13 +25,14 @@ from models.db_models import (
     SimulationConfig as DBSimulationConfig,
 )
 from models.db_models import SimulationResult as DBSimulationResult
-from models.schemas import ComparePlanResult, CompareRequest, SimulationResultOut
+from models.schemas import ComparePlanResult, CompareRequest, SimulationResultOut, DebugResultOut, DebugAgeRow
 from services.simulation import (
     ExpenseInput,
     IncomeSourceInput,
     PlanInputs,
     SimulationConfig,
     simulate,
+    simulate_debug,
 )
 from services.withdrawal import AccountState
 
@@ -117,11 +120,16 @@ def compare_plans(body: CompareRequest, db: Session = Depends(get_db)):
     if not (1 <= len(body.plan_ids) <= 3):
         raise HTTPException(status_code=400, detail="Provide between 1 and 3 plan IDs")
 
+    # Validate initial_market_regime
+    if body.initial_market_regime is not None and body.initial_market_regime not in ("bear", "bull"):
+        raise HTTPException(status_code=422, detail="initial_market_regime must be 'bear', 'bull', or None")
+
     cfg_row = db.query(DBSimulationConfig).filter_by(id=1).first()
     config = SimulationConfig(
         num_runs=body.num_runs if body.num_runs is not None else cfg_row.num_runs,
         lower_percentile=body.lower_percentile if body.lower_percentile is not None else cfg_row.lower_percentile,
         upper_percentile=body.upper_percentile if body.upper_percentile is not None else cfg_row.upper_percentile,
+        initial_market_regime=body.initial_market_regime,
     )
 
     results = []
@@ -150,12 +158,63 @@ def compare_plans(body: CompareRequest, db: Session = Depends(get_db)):
     return results
 
 
+@router.get("/{plan_id}/debug", response_model=DebugResultOut)
+def get_debug_trace(
+    plan_id: int,
+    band: str = Query(default="median"),
+    db: Session = Depends(get_db),
+):
+    """
+    Run a single deterministic simulation with full debug capture.
+
+    Uses the representative run stored for the given band ('lower', 'median', 'upper')
+    from the last simulation result, so the debug view shows the exact run that
+    corresponds to the selected band in the chart.
+    """
+    if band not in ("lower", "median", "upper"):
+        raise HTTPException(status_code=422, detail="band must be 'lower', 'median', or 'upper'")
+
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    # Load stored representative returns for this band
+    db_result = db.query(DBSimulationResult).filter_by(plan_id=plan_id).first()
+    stock_returns = None
+    if db_result and db_result.representative_returns:
+        returns_list = db_result.representative_returns.get(band)
+        if returns_list:
+            stock_returns = np.array(returns_list)
+
+    # Build plan inputs
+    plan_inputs = _build_plan_inputs(plan)
+
+    # Run debug simulation using the representative run's return sequence
+    debug_rows = simulate_debug(plan_inputs, stock_returns=stock_returns)
+
+    # Convert raw dicts to Pydantic models for response
+    age_rows = []
+    for row in debug_rows:
+        try:
+            age_row = DebugAgeRow(**row)
+            age_rows.append(age_row)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Debug trace validation error: {str(e)}")
+
+    return DebugResultOut(
+        plan_id=plan_id,
+        band=band,
+        age_rows=age_rows,
+    )
+
+
 @router.post("/{plan_id}", response_model=SimulationResultOut)
 def run_simulation(
     plan_id: int,
     num_runs: Optional[int] = Query(default=None, ge=10, le=10000),
     lower_percentile: Optional[int] = Query(default=None, ge=1, le=49),
     upper_percentile: Optional[int] = Query(default=None, ge=51, le=99),
+    initial_market_regime: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
 ):
     # Load plan with all child rows
@@ -163,12 +222,17 @@ def run_simulation(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
+    # Validate initial_market_regime
+    if initial_market_regime is not None and initial_market_regime not in ("bear", "bull"):
+        raise HTTPException(status_code=422, detail="initial_market_regime must be 'bear', 'bull', or None")
+
     # Load global simulation config (always id=1), then apply any per-run overrides
     cfg_row = db.query(DBSimulationConfig).filter_by(id=1).first()
     config = SimulationConfig(
         num_runs=num_runs if num_runs is not None else cfg_row.num_runs,
         lower_percentile=lower_percentile if lower_percentile is not None else cfg_row.lower_percentile,
         upper_percentile=upper_percentile if upper_percentile is not None else cfg_row.upper_percentile,
+        initial_market_regime=initial_market_regime,
     )
 
     # Run Monte Carlo simulation
@@ -185,6 +249,7 @@ def run_simulation(
         lower_percentile=config.lower_percentile,
         upper_percentile=config.upper_percentile,
         success_rate=result.success_rate,
+        representative_returns=result.representative_returns,
     )
     db.add(db_result)
     db.flush()   # get db_result.id before inserting children

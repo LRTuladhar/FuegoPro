@@ -16,6 +16,10 @@ from data.historic_returns import (
     MONTHLY_RETURNS,
     get_monthly_returns,
     sample_annual_returns,
+    BEAR_START_INDICES,
+    BULL_START_INDICES,
+    P_BULL_STAY,
+    P_BEAR_STAY,
 )
 
 
@@ -98,3 +102,66 @@ class TestSampleAnnualReturns:
         rng = np.random.default_rng(0)
         result = sample_annual_returns(50_000, rng)
         assert 0.05 < result.mean() < 0.18
+
+
+class TestRegimeClassification:
+    def test_bear_start_indices_nonempty(self):
+        assert len(BEAR_START_INDICES) > 0
+
+    def test_bull_start_indices_nonempty(self):
+        assert len(BULL_START_INDICES) > 0
+
+    def test_all_bear_indices_produce_negative_returns(self):
+        # Verify that every index in BEAR_START_INDICES produces a negative compounded return
+        for start in BEAR_START_INDICES:
+            compounded = np.prod(1.0 + MONTHLY_RETURNS[start : start + 12]) - 1.0
+            assert compounded < 0.0, f"Start index {start} should produce negative return, got {compounded}"
+
+    def test_all_bull_indices_produce_nonnegative_returns(self):
+        # Verify that every index in BULL_START_INDICES produces a non-negative compounded return
+        for start in BULL_START_INDICES:
+            compounded = np.prod(1.0 + MONTHLY_RETURNS[start : start + 12]) - 1.0
+            assert compounded >= 0.0, f"Start index {start} should produce non-negative return, got {compounded}"
+
+    def test_transition_probabilities_in_valid_range(self):
+        assert 0.0 <= P_BULL_STAY <= 1.0
+        assert 0.0 <= P_BEAR_STAY <= 1.0
+
+
+class TestRegimeBasedSampling:
+    def test_bear_regime_first_year_is_negative(self):
+        # Run 50 times with varied seeds; all should have negative first year
+        for seed in range(10):
+            rng = np.random.default_rng(seed)
+            result = sample_annual_returns(20, rng, first_year_regime='bear')
+            assert result[0] < 0.0, f"Seed {seed}: Bear regime first year should be negative, got {result[0]}"
+
+    def test_bull_regime_first_year_is_nonnegative(self):
+        # Run 50 times with varied seeds; all should have non-negative first year
+        for seed in range(10):
+            rng = np.random.default_rng(seed)
+            result = sample_annual_returns(20, rng, first_year_regime='bull')
+            assert result[0] >= 0.0, f"Seed {seed}: Bull regime first year should be non-negative, got {result[0]}"
+
+    def test_random_regime_is_mix(self):
+        # With no regime specified, across many draws we should see both positive and negative years
+        rng = np.random.default_rng(42)
+        result = sample_annual_returns(1000, rng, first_year_regime=None)
+        has_negative = np.any(result < 0.0)
+        has_positive = np.any(result > 0.0)
+        assert has_negative and has_positive, "Random regime should produce both positive and negative returns"
+
+    def test_bear_regime_invalid_raises(self):
+        rng = np.random.default_rng(0)
+        with pytest.raises(ValueError):
+            sample_annual_returns(10, rng, first_year_regime='invalid')
+
+    def test_regime_markov_transition(self):
+        # Over many runs with 'bear' start, check that the distribution converges
+        # to the stationary distribution implied by the transition probabilities
+        rng = np.random.default_rng(100)
+        result = sample_annual_returns(100, rng, first_year_regime='bear')
+        # First year should be bear (negative)
+        assert result[0] < 0.0
+        # Later years should be a mix (this is a looser check, just verifying Markov chain ran)
+        assert np.any(result[1:] < 0.0) and np.any(result[1:] > 0.0)

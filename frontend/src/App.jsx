@@ -3,6 +3,7 @@ import Layout from './components/layout/Layout'
 import PlansList from './pages/PlansList'
 import PlanEditor from './pages/PlanEditor'
 import Simulation from './pages/Simulation'
+import SimulationDebug from './pages/SimulationDebug'
 import Compare from './pages/Compare'
 import Settings from './pages/Settings'
 import { SimConfigProvider } from './store/simConfig'
@@ -18,6 +19,7 @@ function App() {
             <Route path="plans/new" element={<PlanEditor />} />
             <Route path="plans/:id" element={<PlanEditor />} />
             <Route path="plans/:id/simulate" element={<Simulation />} />
+            <Route path="plans/:id/simulate/debug" element={<SimulationDebug />} />
             <Route path="compare" element={<Compare />} />
             <Route path="settings" element={<Settings />} />
           </Route>

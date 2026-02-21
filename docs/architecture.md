@@ -261,11 +261,16 @@ Base URL: `http://localhost:8000/api`
 
 ### 4.2 Simulation
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/simulate/{plan_id}` | Run simulation for a plan; returns result |
-| GET | `/simulate/{plan_id}/results` | Get cached results for a plan |
-| POST | `/simulate/compare` | Run simulation for up to 3 plan IDs; returns all results |
+| Method | Endpoint | Query/Body Params | Description |
+|--------|----------|-------------------|-------------|
+| POST | `/simulate/{plan_id}` | `num_runs`, `lower_percentile`, `upper_percentile`, `initial_market_regime` | Run simulation for a plan; returns result |
+| GET | `/simulate/{plan_id}/results` | | Get cached results for a plan |
+| POST | `/simulate/compare` | Body: `plan_ids`, `num_runs`, `lower_percentile`, `upper_percentile`, `initial_market_regime` | Run simulation for up to 3 plan IDs; returns all results |
+
+**`initial_market_regime` parameter** (optional):
+- Values: `'bear'`, `'bull'`, or `null` (default)
+- Constraints: applies to all runs in that simulation
+- When `'bear'` or `'bull'`: year 1 samples from that regime's pool, years 2+ follow Markov transitions
 
 ### 4.3 Config
 
@@ -286,19 +291,44 @@ The simulation runs entirely in Python on the backend. It is CPU-bound; NumPy is
 - Monthly `Change %` values are extracted and stored as a NumPy array of floats
 - All simulation runs sample from this array with replacement
 
+### 5.1a Market Regime Classification
+
+At module startup, `historic_returns.py` pre-computes regime classification and Markov transition probabilities:
+
+**Regime Pools** (for regime-constrained sampling):
+- `BEAR_START_INDICES`: Start indices of all 12-month historical windows producing negative annual returns
+- `BULL_START_INDICES`: Start indices of all 12-month historical windows producing non-negative annual returns
+
+**Markov Transition Probabilities** (computed from non-overlapping annual windows):
+- `P_BULL_STAY`: Probability a bull year is followed by another bull year
+- `P_BEAR_STAY`: Probability a bear year is followed by another bear year
+- Example values from S&P 500 history since 1970: P_BULL_STAY ≈ 0.75, P_BEAR_STAY ≈ 0.45
+
+These are pre-computed constants used by the sampling function when a user specifies an initial market regime.
+
 ### 5.2 Simulation Algorithm (per run)
 
 ```
 for each simulation run (1..N):
     initialise account balances from plan data
+    set initial_regime = user-specified regime (or random if none specified)
 
     for each year (current_age..planning_horizon):
         1. GROWTH
            for each stock account:
-               sample 12 monthly returns from historical data
+               if user specified regime (bear/bull):
+                   sample 12 monthly returns from the current regime's historical pool
+               else:
+                   sample 12 monthly returns uniformly from all historical data
                apply compounded monthly returns to balance
            for each bond/savings account:
                apply fixed annual return rate to balance
+
+           (if regime was specified, transition to next year's regime via Markov chain:
+            next_regime = bull if random() < P_BULL_STAY else bear
+                          if current regime is bull
+                        = bear if random() < P_BEAR_STAY else bull
+                          if current regime is bear)
 
         2. INCOME
            sum all income sources active this year
@@ -392,6 +422,8 @@ No global state library (Redux etc.) needed at this scale. State is managed as f
 - **Plan data**: fetched from API on demand, local component state while editing
 - **Simulation results**: fetched from API, held in component state on the Simulation page
 - **Simulation config**: held in a lightweight React Context (`SimConfigContext`) so it is shared between Simulation and Compare screens without prop drilling
+  - Global settings: `numRuns`, `lowerPct`, `upperPct` (persisted to database)
+  - Per-run settings: `initialRegime` (ephemeral, not persisted) — added to local state on Simulation/Compare pages
 - **UI state** (drawer open/closed, active tab, etc.): local component state
 
 ### 6.3 API Client
