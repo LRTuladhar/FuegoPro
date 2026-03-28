@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { getPlan, getSimulationDebug } from '../api/client'
+import CashflowSankey from '../components/simulation/CashflowSankey'
 
 // ---------------------------------------------------------------------------
 // Formatters
@@ -567,6 +568,7 @@ export default function SimulationDebug() {
       {/* Year detail */}
       {row && (
         <>
+          <CashflowSankey row={row} />
           <InvestmentGrowthCard row={row} />
           <IncomeCard row={row} />
           <ExpensesCard row={row} />
