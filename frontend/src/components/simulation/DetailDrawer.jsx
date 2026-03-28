@@ -159,23 +159,69 @@ function PortfolioTable({ data, lower, upper, viewMode = 'statistical' }) {
 // ---------------------------------------------------------------------------
 function TaxTable({ data }) {
   if (!data || data.length === 0) return <Empty />
+
+  const groupHeader = (label, cols, color) => (
+    <th
+      key={label}
+      colSpan={cols}
+      style={{
+        ...th,
+        textAlign: 'center',
+        borderBottom: `2px solid ${color}`,
+        color,
+        paddingBottom: '0.25rem',
+      }}
+    >
+      {label}
+    </th>
+  )
+
   return (
     <table style={tableStyle}>
       <thead>
+        {/* Group header row */}
         <tr style={{ background: '#162032' }}>
-          {['Age', 'Fed Ordinary', 'Fed LTCG', 'State', 'Total Tax', 'Eff. Rate'].map((h) => (
-            <th key={h} style={th}>{h}</th>
+          <th style={th} rowSpan={2}>Age</th>
+          {groupHeader('Ordinary Income Breakdown', 5, '#60a5fa')}
+          {groupHeader('LTCG', 3, '#34d399')}
+          {groupHeader('Taxes', 4, '#f97316')}
+        </tr>
+        {/* Column header row */}
+        <tr style={{ background: '#162032' }}>
+          {[
+            'Active', 'RMDs', 'Trad. W/D', 'SS', 'Total Ord.',
+            'LTCG Inc.', 'Fed LTCG', 'LTCG Rate',
+            'Fed Ord.', 'State', 'Total', 'Eff. Rate',
+          ].map((h) => (
+            <th key={h} style={{ ...th, top: '1.75rem', borderTop: '1px solid #334155' }}>{h}</th>
           ))}
         </tr>
       </thead>
       <tbody>
         {data.map((row) => {
-          const total = row.tax_federal_ordinary + row.tax_federal_ltcg + row.tax_state
+          const active     = row.income_active          ?? 0
+          const rmd        = row.income_rmd             ?? 0
+          const tradWd     = row.income_trad_withdrawal ?? 0
+          const ss         = row.income_taxable_ss      ?? 0
+          const ordIncome  = row.ordinary_income        ?? (active + rmd + tradWd + ss)
+          const ltcgIncome = row.ltcg_income            ?? 0
+          const total      = row.tax_federal_ordinary + row.tax_federal_ltcg + row.tax_state
+          const ltcgRate   = ltcgIncome > 0 ? row.tax_federal_ltcg / ltcgIncome : null
           return (
             <tr key={row.age} style={{ borderTop: '1px solid #334155' }}>
               <td style={td}>{row.age}</td>
-              <td style={td}>{money(row.tax_federal_ordinary)}</td>
+              {/* Ordinary income breakdown */}
+              <td style={td}>{money(active)}</td>
+              <td style={td}>{rmd > 0 ? money(rmd) : <span style={{ color: '#475569' }}>—</span>}</td>
+              <td style={td}>{tradWd > 0 ? money(tradWd) : <span style={{ color: '#475569' }}>—</span>}</td>
+              <td style={td}>{ss > 0 ? money(ss) : <span style={{ color: '#475569' }}>—</span>}</td>
+              <td style={{ ...td, fontWeight: 600, color: '#93c5fd' }}>{money(ordIncome)}</td>
+              {/* LTCG */}
+              <td style={td}>{money(ltcgIncome)}</td>
               <td style={td}>{money(row.tax_federal_ltcg)}</td>
+              <td style={{ ...td, color: '#94a3b8' }}>{ltcgRate != null ? pct(ltcgRate) : '—'}</td>
+              {/* Taxes */}
+              <td style={td}>{money(row.tax_federal_ordinary)}</td>
               <td style={td}>{money(row.tax_state)}</td>
               <td style={{ ...td, fontWeight: 600 }}>{money(total)}</td>
               <td style={td}>{pct(row.effective_tax_rate)}</td>
@@ -418,8 +464,13 @@ export default function DetailDrawer({ annualDetail, incomeDetail, expenseDetail
 const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }
 
 const th = {
+  position: 'sticky',
+  top: 0,
+  zIndex: 1,
+  background: '#162032',
   padding: '0.5rem 1rem',
   fontSize: '0.72rem',
+  lineHeight: '1rem',
   fontWeight: 600,
   color: '#94a3b8',
   textTransform: 'uppercase',

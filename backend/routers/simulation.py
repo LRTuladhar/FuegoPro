@@ -98,6 +98,11 @@ def _build_plan_inputs(plan: Plan) -> PlanInputs:
         )
         for e in plan.expenses
     ]
+    # Derive a single inflation rate for tax-bracket indexing from the
+    # average of expense inflation rates (fallback: 2.5% ≈ historical US CPI).
+    expense_rates = [e.inflation_rate for e in plan.expenses if e.inflation_rate]
+    inflation_rate = sum(expense_rates) / len(expense_rates) if expense_rates else 0.025
+
     return PlanInputs(
         current_age=plan.current_age,
         planning_horizon=plan.planning_horizon,
@@ -107,6 +112,7 @@ def _build_plan_inputs(plan: Plan) -> PlanInputs:
         accounts=accounts,
         income_sources=income_sources,
         expenses=expenses,
+        inflation_rate=inflation_rate,
     )
 
 
@@ -275,6 +281,12 @@ def run_simulation(
             result_id=db_result.id,
             band=ad.band,
             age=ad.age,
+            income_active=ad.income_active,
+            income_rmd=ad.income_rmd,
+            income_trad_withdrawal=ad.income_trad_withdrawal,
+            income_taxable_ss=ad.income_taxable_ss,
+            ordinary_income=ad.ordinary_income,
+            ltcg_income=ad.ltcg_income,
             tax_federal_ordinary=ad.tax_federal_ordinary,
             tax_federal_ltcg=ad.tax_federal_ltcg,
             tax_state=ad.tax_state,

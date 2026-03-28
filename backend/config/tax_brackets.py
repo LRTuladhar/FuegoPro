@@ -1,9 +1,11 @@
 """
 2024 federal and California tax constants.
 
-All dollar amounts are nominal 2024 figures.  The simulation engine does NOT
-inflate brackets over time — this is a deliberate simplification consistent
-with using historical real returns (which already embed inflation).
+All dollar amounts are nominal 2024 base-year figures.  The simulation uses
+nominal S&P 500 returns, so expenses are inflation-adjusted each year.  To
+prevent bracket creep the simulation engine deflates nominal income back to
+2024 dollars before applying these brackets (equivalent to inflating the
+brackets annually at the plan's inflation rate).
 """
 
 # ---------------------------------------------------------------------------

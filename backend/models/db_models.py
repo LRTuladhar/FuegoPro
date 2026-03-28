@@ -146,14 +146,20 @@ class SimulationAnnualDetail(Base):
     """Tax breakdown per band per age. band: 'median' | 'lower' | 'upper'."""
     __tablename__ = "simulation_annual_detail"
 
-    id                   = Column(Integer, primary_key=True, autoincrement=True)
-    result_id            = Column(Integer, ForeignKey("simulation_results.id", ondelete="CASCADE"), nullable=False)
-    band                 = Column(String, nullable=False)
-    age                  = Column(Integer, nullable=False)
-    tax_federal_ordinary = Column(Float, nullable=False)
-    tax_federal_ltcg     = Column(Float, nullable=False)
-    tax_state            = Column(Float, nullable=False)
-    effective_tax_rate   = Column(Float, nullable=False)
+    id                     = Column(Integer, primary_key=True, autoincrement=True)
+    result_id              = Column(Integer, ForeignKey("simulation_results.id", ondelete="CASCADE"), nullable=False)
+    band                   = Column(String, nullable=False)
+    age                    = Column(Integer, nullable=False)
+    income_active          = Column(Float, nullable=True)   # wages, pension, rental, bond interest
+    income_rmd             = Column(Float, nullable=True)   # required minimum distributions
+    income_trad_withdrawal = Column(Float, nullable=True)   # traditional pulls beyond RMDs
+    income_taxable_ss      = Column(Float, nullable=True)   # taxable Social Security
+    ordinary_income        = Column(Float, nullable=True)   # sum of the four above
+    ltcg_income            = Column(Float, nullable=True)
+    tax_federal_ordinary   = Column(Float, nullable=False)
+    tax_federal_ltcg       = Column(Float, nullable=False)
+    tax_state              = Column(Float, nullable=False)
+    effective_tax_rate     = Column(Float, nullable=False)
 
     result = relationship("SimulationResult", back_populates="annual_detail")
 

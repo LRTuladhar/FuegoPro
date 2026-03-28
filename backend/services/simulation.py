@@ -76,6 +76,7 @@ class PlanInputs:
     accounts:         List[AccountState]   # original balances; copied per run
     income_sources:   List[IncomeSourceInput]
     expenses:         List[ExpenseInput]
+    inflation_rate:   float = 0.025        # used to index tax brackets each year
 
 
 @dataclass
@@ -109,12 +110,18 @@ class AgeAccountPoint:
 
 @dataclass
 class AnnualDetail:
-    age:                  int
-    tax_federal_ordinary: float
-    tax_federal_ltcg:     float
-    tax_state:            float
-    effective_tax_rate:   float
-    band:                 str = 'median'   # 'median' | 'lower' | 'upper'
+    age:                   int
+    income_active:         float   # wages, pension, rental, bond interest, taxable-other
+    income_rmd:            float   # required minimum distributions
+    income_trad_withdrawal: float  # traditional acct pulls beyond RMDs (expense shortfall)
+    income_taxable_ss:     float   # taxable fraction of Social Security
+    ordinary_income:       float   # sum of the four components above
+    ltcg_income:           float
+    tax_federal_ordinary:  float
+    tax_federal_ltcg:      float
+    tax_state:             float
+    effective_tax_rate:    float
+    band:                  str = 'median'   # 'median' | 'lower' | 'upper'
 
 
 @dataclass
@@ -305,16 +312,25 @@ def _simulate_one_run(
         total_ordinary = other_ordinary + pretax_distributions + taxable_ss
         ltcg_income    = wr_expense.ltcg_income
 
+        # Deflate nominal income back to base-year (2024) dollars so that the
+        # fixed 2024 tax brackets are applied to inflation-equivalent income.
+        # This is equivalent to inflating the brackets each year and prevents
+        # bracket creep where nominal growth pushes income into higher brackets
+        # even though real purchasing power hasn't changed.
+        inflation_factor  = (1.0 + plan.inflation_rate) ** age_idx
+        real_ordinary     = total_ordinary / inflation_factor
+        real_ltcg         = ltcg_income    / inflation_factor
+
         # Federal tax split: compute with and without LTCG to isolate each component
-        fed_ordinary_only = calculate_federal_tax(total_ordinary, 0.0, plan.filing_status)
-        fed_total         = calculate_federal_tax(total_ordinary, ltcg_income, plan.filing_status)
+        fed_ordinary_only = calculate_federal_tax(real_ordinary, 0.0, plan.filing_status) * inflation_factor
+        fed_total         = calculate_federal_tax(real_ordinary, real_ltcg, plan.filing_status) * inflation_factor
         fed_ltcg          = fed_total - fed_ordinary_only
 
         # State tax: California taxes LTCG as ordinary income
-        state_taxable = total_ordinary + (ltcg_income if plan.state_tax_type == "california" else 0.0)
-        state_tax     = calculate_state_tax(
-            state_taxable, plan.state_tax_type, plan.state_tax_rate, plan.filing_status
-        )
+        real_state_taxable = real_ordinary + (real_ltcg if plan.state_tax_type == "california" else 0.0)
+        state_tax          = calculate_state_tax(
+            real_state_taxable, plan.state_tax_type, plan.state_tax_rate, plan.filing_status
+        ) * inflation_factor
 
         total_tax = fed_total + state_tax
 
@@ -342,6 +358,13 @@ def _simulate_one_run(
             bal_before    = acct.balance
             acct.balance  = max(0.0, acct.balance * (1.0 + growth))
             return_amount = acct.balance - bal_before
+
+            # All investment growth is new unrealized gain (zero cost basis), so
+            # gains_pct increases each year the account appreciates.
+            if acct.tax_treatment == "taxable_brokerage" and acct.balance > 0 and return_amount > 0:
+                old_gains = bal_before * acct.gains_pct
+                acct.gains_pct = min(1.0, (old_gains + return_amount) / acct.balance)
+
             return_details.append({
                 "age":           age,
                 "account_id":    acct.id,
@@ -360,11 +383,17 @@ def _simulate_one_run(
         eff_rate = total_tax / total_income_taxed if total_income_taxed > 0.0 else 0.0
 
         annual_details.append({
-            "age":                  age,
-            "tax_federal_ordinary": fed_ordinary_only,
-            "tax_federal_ltcg":     fed_ltcg,
-            "tax_state":            state_tax,
-            "effective_tax_rate":   eff_rate,
+            "age":                   age,
+            "income_active":         other_ordinary,
+            "income_rmd":            rmd_total,
+            "income_trad_withdrawal": wr_expense.ordinary_income,
+            "income_taxable_ss":     taxable_ss,
+            "ordinary_income":       total_ordinary,
+            "ltcg_income":           ltcg_income,
+            "tax_federal_ordinary":  fed_ordinary_only,
+            "tax_federal_ltcg":      fed_ltcg,
+            "tax_state":             state_tax,
+            "effective_tax_rate":    eff_rate,
         })
 
         # -------------------------------------------------------------------
@@ -486,7 +515,7 @@ def _simulate_one_run(
                 "tax": {
                     "total_ordinary_income": total_ordinary,
                     "total_ltcg_income":     ltcg_income,
-                    "state_taxable_income":  state_taxable,
+                    "state_taxable_income":  real_state_taxable * inflation_factor,
                     "federal_ordinary_tax":  fed_ordinary_only,
                     "federal_ltcg_tax":      fed_ltcg,
                     "state_tax":             state_tax,

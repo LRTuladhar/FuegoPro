@@ -156,6 +156,12 @@ class AccountTimelinePoint(BaseModel):
 class AnnualDetailOut(BaseModel):
     band: str
     age: int
+    income_active: float = 0.0
+    income_rmd: float = 0.0
+    income_trad_withdrawal: float = 0.0
+    income_taxable_ss: float = 0.0
+    ordinary_income: float = 0.0
+    ltcg_income: float = 0.0
     tax_federal_ordinary: float
     tax_federal_ltcg: float
     tax_state: float
