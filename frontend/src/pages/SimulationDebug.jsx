@@ -479,6 +479,17 @@ export default function SimulationDebug() {
     setSearchParams({ band: newBand })
   }
 
+  // Arrow key navigation
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return
+      if (e.key === 'ArrowLeft') setSelectedIdx(i => Math.max(0, i - 1))
+      else if (e.key === 'ArrowRight') setSelectedIdx(i => Math.min((debug?.age_rows?.length ?? 1) - 1, i + 1))
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [debug])
+
   if (loading) return <div style={S.loading}>Loading…</div>
 
   if (error && !debug) {
