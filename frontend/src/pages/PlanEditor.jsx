@@ -62,7 +62,7 @@ export default function PlanEditor() {
   if (loading) return <p style={{ color: '#94a3b8' }}>Loading...</p>
 
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div style={{ maxWidth: 1200 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
         <button

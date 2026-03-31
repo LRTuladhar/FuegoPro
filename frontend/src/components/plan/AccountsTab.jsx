@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+
 const EMPTY = {
   name: '',
   tax_treatment: 'traditional',
@@ -9,9 +11,17 @@ const EMPTY = {
 }
 
 export default function AccountsTab({ accounts, onChange }) {
-  const add    = ()         => onChange([...accounts, { ...EMPTY }])
-  const remove = (i)        => onChange(accounts.filter((_, j) => j !== i))
-  const update = (i, patch) => onChange(accounts.map((a, j) => j === i ? { ...a, ...patch } : a))
+  const dragIdx = useRef(null)
+
+  const add     = ()         => onChange([...accounts, { ...EMPTY }])
+  const remove  = (i)        => onChange(accounts.filter((_, j) => j !== i))
+  const update  = (i, patch) => onChange(accounts.map((a, j) => j === i ? { ...a, ...patch } : a))
+  const reorder = (from, to) => {
+    if (from === to) return
+    const arr = [...accounts]
+    arr.splice(to, 0, arr.splice(from, 1)[0])
+    onChange(arr)
+  }
 
   return (
     <div>
@@ -27,6 +37,7 @@ export default function AccountsTab({ accounts, onChange }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
               <thead>
                 <tr>
+                  <th style={th}></th>
                   {['Name', 'Tax Treatment', 'Asset Class', 'Balance ($)', 'Start Age', 'Return Rate', 'LTCG %', ''].map(h => (
                     <th key={h} style={th}>{h}</th>
                   ))}
@@ -34,7 +45,17 @@ export default function AccountsTab({ accounts, onChange }) {
               </thead>
               <tbody>
                 {accounts.map((a, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid #334155' }}>
+                  <tr
+                    key={i}
+                    style={{ borderTop: '1px solid #334155' }}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); reorder(dragIdx.current, i) }}
+                  >
+                    <td
+                      style={tdHandle}
+                      draggable
+                      onDragStart={e => { dragIdx.current = i; e.dataTransfer.effectAllowed = 'move' }}
+                    >⠿</td>
                     <td style={td}>
                       <input value={a.name} onChange={e => update(i, { name: e.target.value })} style={ci()} placeholder="e.g. 401(k)" />
                     </td>
@@ -101,6 +122,7 @@ const sectionTitle= { margin: 0, fontSize: '0.95rem', fontWeight: 600, color: '#
 const empty       = { color: '#94a3b8', fontSize: '0.875rem', margin: 0 }
 const th          = { padding: '0.5rem', fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', textAlign: 'left', borderBottom: '1px solid #334155', whiteSpace: 'nowrap' }
 const td          = { padding: '0.3rem 0.25rem', verticalAlign: 'middle' }
+const tdHandle    = { padding: '0.3rem 0.4rem', verticalAlign: 'middle', color: '#475569', cursor: 'grab', fontSize: '1rem', userSelect: 'none' }
 const muted       = { color: '#94a3b8', fontSize: '0.8rem' }
 const addBtn      = { padding: '0.35rem 0.7rem', background: '#334155', border: '1px solid #475569', borderRadius: 5, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500, color: '#94a3b8' }
 const removeBtn   = { padding: '0.2rem 0.45rem', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.9rem' }

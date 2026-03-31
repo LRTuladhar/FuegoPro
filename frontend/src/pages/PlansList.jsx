@@ -29,7 +29,7 @@ export default function PlansList() {
   if (loading) return <p style={{ color: '#94a3b8' }}>Loading...</p>
 
   return (
-    <div style={{ maxWidth: 960 }}>
+    <div style={{ maxWidth: 1200 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>Plans</h1>
         <button onClick={() => navigate('/plans/new')} style={btn('primary')}>+ New Plan</button>
