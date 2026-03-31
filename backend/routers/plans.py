@@ -108,6 +108,11 @@ def update_plan(plan_id: int, payload: PlanUpdate, db: Session = Depends(get_db)
 @router.delete("/{plan_id}", status_code=204)
 def delete_plan(plan_id: int, db: Session = Depends(get_db)):
     plan = _get_plan_or_404(plan_id, db)
+    # Delete simulation result first so the DB cascade clears
+    # simulation_account_timeline / simulation_return_detail rows (which
+    # reference accounts.id) before the accounts themselves are deleted.
+    db.query(DBSimulationResult).filter_by(plan_id=plan.id).delete()
+    db.flush()
     db.delete(plan)
     db.commit()
 
