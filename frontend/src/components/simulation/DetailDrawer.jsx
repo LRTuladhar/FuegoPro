@@ -388,6 +388,60 @@ export function PortfolioSection({ data, representativeData, lower, upper, viewM
 }
 
 // ---------------------------------------------------------------------------
+// Individual section exports
+// ---------------------------------------------------------------------------
+
+export function AnnualSummarySection({ annualDetail, incomeDetail, expenseDetail, accountTimeline, returnDetail, initialBalance, band }) {
+  const label = BANDS.find((b) => b.value === band)?.label ?? band
+  const ann  = (annualDetail    ?? []).filter((r) => r.band === band)
+  const inc  = (incomeDetail    ?? []).filter((r) => r.band === band)
+  const exp  = (expenseDetail   ?? []).filter((r) => r.band === band)
+  const acct = (accountTimeline ?? []).filter((r) => r.band === band)
+  const ret  = (returnDetail    ?? []).filter((r) => r.band === band)
+  return (
+    <Section title={`Annual Summary — ${label}`} defaultOpen>
+      <CashflowTable annualDetail={ann} incomeDetail={inc} expenseDetail={exp} accountTimeline={acct} returnDetail={ret} initialBalance={initialBalance ?? 0} />
+    </Section>
+  )
+}
+
+export function IncomeDetailSection({ data, band }) {
+  const label = BANDS.find((b) => b.value === band)?.label ?? band
+  return (
+    <Section title={`Income Detail — ${label}`}>
+      <IncomeTable data={(data ?? []).filter((r) => r.band === band)} />
+    </Section>
+  )
+}
+
+export function ExpenseDetailSection({ data, band }) {
+  const label = BANDS.find((b) => b.value === band)?.label ?? band
+  return (
+    <Section title={`Expense Detail — ${label}`}>
+      <ExpenseTable data={(data ?? []).filter((r) => r.band === band)} />
+    </Section>
+  )
+}
+
+export function InvestmentReturnsSection({ data, band }) {
+  const label = BANDS.find((b) => b.value === band)?.label ?? band
+  return (
+    <Section title={`Investment Returns — ${label}`}>
+      <ReturnTable data={(data ?? []).filter((r) => r.band === band)} />
+    </Section>
+  )
+}
+
+export function TaxBreakdownSection({ data, band }) {
+  const label = BANDS.find((b) => b.value === band)?.label ?? band
+  return (
+    <Section title={`Tax Breakdown — ${label}`}>
+      <TaxTable data={(data ?? []).filter((r) => r.band === band)} />
+    </Section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Band selector
 // ---------------------------------------------------------------------------
 const BANDS = [

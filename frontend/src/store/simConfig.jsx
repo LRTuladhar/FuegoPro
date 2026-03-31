@@ -3,7 +3,7 @@ import { getSimConfig, updateSimConfig } from '../api/client'
 
 const SimConfigContext = createContext(null)
 
-const DEFAULTS = { numRuns: 1000, lowerPct: 10, upperPct: 90 }
+const DEFAULTS = { numRuns: 1000, lowerPct: 20, upperPct: 80 }
 
 export function SimConfigProvider({ children }) {
   const [config, setConfig] = useState(DEFAULTS)

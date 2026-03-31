@@ -41,19 +41,32 @@ def init_db():
 
     # Migrate: add representative_returns column if it doesn't exist yet
     inspector = inspect(engine)
-    existing_cols = {c["name"] for c in inspector.get_columns("simulation_results")}
-    if "representative_returns" not in existing_cols:
+    existing_sim_cols = {c["name"] for c in inspector.get_columns("simulation_results")}
+    if "representative_returns" not in existing_sim_cols:
         with engine.connect() as conn:
             conn.execute(text(
                 "ALTER TABLE simulation_results ADD COLUMN representative_returns TEXT"
             ))
             conn.commit()
 
-    # Seed the single simulation_config row if it doesn't exist yet
+    # Migrate: add start_age column to accounts if it doesn't exist yet
+    existing_acct_cols = {c["name"] for c in inspector.get_columns("accounts")}
+    if "start_age" not in existing_acct_cols:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE accounts ADD COLUMN start_age INTEGER"))
+            conn.commit()
+
+    # Seed the single simulation_config row if it doesn't exist yet;
+    # migrate old default percentiles (10/90) to the new defaults (20/80).
     db = SessionLocal()
     try:
-        if not db.query(SimulationConfig).filter_by(id=1).first():
-            db.add(SimulationConfig(id=1, num_runs=1000, lower_percentile=10, upper_percentile=90))
+        cfg = db.query(SimulationConfig).filter_by(id=1).first()
+        if not cfg:
+            db.add(SimulationConfig(id=1, num_runs=1000, lower_percentile=20, upper_percentile=80))
+            db.commit()
+        elif cfg.lower_percentile == 10 and cfg.upper_percentile == 90:
+            cfg.lower_percentile = 20
+            cfg.upper_percentile = 80
             db.commit()
     finally:
         db.close()

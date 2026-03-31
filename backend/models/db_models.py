@@ -44,6 +44,7 @@ class Account(Base):
     tax_treatment      = Column(String, nullable=False)  # 'traditional' | 'taxable_brokerage' | 'cash_savings'
     asset_class        = Column(String, nullable=False)  # 'stocks' | 'bonds' | 'savings'
     balance            = Column(Float, nullable=False)
+    start_age          = Column(Integer, nullable=True)  # if set, account is inactive until this age
     annual_return_rate = Column(Float, nullable=True)    # bonds/savings only; null for stocks
     gains_pct          = Column(Float, nullable=True)    # taxable_brokerage only: % of withdrawals that are LTCG
 
@@ -217,5 +218,5 @@ class SimulationConfig(Base):
 
     id               = Column(Integer, primary_key=True)
     num_runs         = Column(Integer, nullable=False, default=1000)
-    lower_percentile = Column(Integer, nullable=False, default=10)
-    upper_percentile = Column(Integer, nullable=False, default=90)
+    lower_percentile = Column(Integer, nullable=False, default=20)
+    upper_percentile = Column(Integer, nullable=False, default=80)

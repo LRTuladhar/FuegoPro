@@ -4,8 +4,9 @@ import { getPlan, runSimulation, getSimulationResults } from '../api/client'
 import SuccessRate from '../components/simulation/SuccessRate'
 import PercentileBandChart from '../components/simulation/PercentileBandChart'
 import AccountBalancesChart from '../components/simulation/AccountBalancesChart'
-import DetailDrawer, { PortfolioSection, BandSelector } from '../components/simulation/DetailDrawer'
+import { PortfolioSection, BandSelector, AnnualSummarySection, IncomeDetailSection, ExpenseDetailSection, InvestmentReturnsSection, TaxBreakdownSection } from '../components/simulation/DetailDrawer'
 import SimConfigPanel from '../components/simulation/SimConfigPanel'
+import IncomeExpenseChart from '../components/simulation/IncomeExpenseChart'
 import { useSimConfig } from '../store/simConfig'
 
 export default function Simulation() {
@@ -146,29 +147,10 @@ export default function Simulation() {
         </div>
       ) : (
         /* Results */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
           <SuccessRate rate={results.success_rate} numRuns={results.num_runs} />
 
-          {/* Group 1: Portfolio value chart + table */}
-          <div style={group}>
-            <PercentileBandChart
-              data={results.portfolio_timeline}
-              representativeData={representativeTimeline}
-              lower={results.lower_percentile}
-              upper={results.upper_percentile}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-            />
-            <PortfolioSection
-              data={results.portfolio_timeline}
-              representativeData={representativeTimeline}
-              lower={results.lower_percentile}
-              upper={results.upper_percentile}
-              viewMode={viewMode}
-            />
-          </div>
-
-          {/* Band selection panel — controls both the chart and detail tables */}
+          {/* Band selection panel */}
           <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Band Selection
@@ -176,26 +158,69 @@ export default function Simulation() {
             <BandSelector value={band} onChange={setBand} />
             <button
               onClick={() => navigate(`/plans/${id}/simulate/debug?band=${band}`)}
-              style={{ ...btn('secondary'), marginLeft: 'auto', ...(results ? {} : { opacity: 0.45, cursor: 'not-allowed' }) }}
-              disabled={!results}
+              style={{ ...btn('secondary'), marginLeft: 'auto' }}
             >
               Debug Table
             </button>
           </div>
 
-          {/* Group 2: Account balances chart + detail tables */}
-          <div style={group}>
-            <AccountBalancesChart data={results.account_timeline} band={band} />
-            <DetailDrawer
-              annualDetail={results.annual_detail}
-              incomeDetail={results.income_detail}
-              expenseDetail={results.expense_detail}
-              accountTimeline={results.account_timeline}
-              returnDetail={results.return_detail}
-              initialBalance={plan?.accounts?.reduce((s, a) => s + (a.balance ?? 0), 0) ?? 0}
-              band={band}
-            />
-          </div>
+          {/* Portfolio value chart + table */}
+          <PercentileBandChart
+            data={results.portfolio_timeline}
+            representativeData={representativeTimeline}
+            lower={results.lower_percentile}
+            upper={results.upper_percentile}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+          />
+          <PortfolioSection
+            data={results.portfolio_timeline}
+            representativeData={representativeTimeline}
+            lower={results.lower_percentile}
+            upper={results.upper_percentile}
+            viewMode={viewMode}
+          />
+
+          {/* Annual Summary table */}
+          <AnnualSummarySection
+            annualDetail={results.annual_detail}
+            incomeDetail={results.income_detail}
+            expenseDetail={results.expense_detail}
+            accountTimeline={results.account_timeline}
+            returnDetail={results.return_detail}
+            initialBalance={plan?.accounts?.reduce((s, a) => s + (a.balance ?? 0), 0) ?? 0}
+            band={band}
+          />
+
+          {/* Account Balances chart */}
+          <AccountBalancesChart data={results.account_timeline} band={band} />
+
+          {/* Income chart + table */}
+          <IncomeExpenseChart
+            data={results.income_detail}
+            categoryKey="source_name"
+            title="Income"
+            band={band}
+            variant="income"
+          />
+          <IncomeDetailSection data={results.income_detail} band={band} />
+
+          {/* Expenses chart + table */}
+          <IncomeExpenseChart
+            data={results.expense_detail}
+            categoryKey="expense_name"
+            title="Expenses"
+            band={band}
+            variant="expenses"
+          />
+          <ExpenseDetailSection data={results.expense_detail} band={band} />
+
+          {/* Investment Returns table */}
+          <InvestmentReturnsSection data={results.return_detail} band={band} />
+
+          {/* Tax Breakdown table */}
+          <TaxBreakdownSection data={results.annual_detail} band={band} />
+
           <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0, textAlign: 'right' }}>
             {results.num_runs.toLocaleString()} runs · lower {results.lower_percentile}th /
             upper {results.upper_percentile}th percentile ·

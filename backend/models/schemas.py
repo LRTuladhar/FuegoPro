@@ -13,6 +13,7 @@ class AccountBase(BaseModel):
     tax_treatment: str       # 'traditional' | 'taxable_brokerage' | 'cash_savings'
     asset_class: str         # 'stocks' | 'bonds' | 'savings'
     balance: float
+    start_age: Optional[int] = None   # if set, account is inactive (frozen) until this age
     annual_return_rate: Optional[float] = None
     gains_pct: Optional[float] = None
 

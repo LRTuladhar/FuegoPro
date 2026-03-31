@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend,
   ResponsiveContainer, CartesianGrid,
@@ -17,13 +18,15 @@ export default function PercentileBandChart({
   viewMode = 'statistical',
   onViewModeChange,
 }) {
+  const [open, setOpen] = useState(true)
   const isRep = viewMode === 'representative'
   const chartData = isRep ? (representativeData ?? []) : (data ?? [])
 
   return (
     <div style={card}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: open ? '0.25rem' : 0 }}>
         <h2 style={heading}>Portfolio Value</h2>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {onViewModeChange && (
           <div style={{ display: 'flex', gap: 4 }}>
             {[
@@ -49,13 +52,20 @@ export default function PercentileBandChart({
             ))}
           </div>
         )}
+        <button
+          onClick={() => setOpen((o) => !o)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', color: '#94a3b8', padding: '0.25rem 0', flexShrink: 0 }}
+        >
+          {open ? '▲ collapse' : '▼ expand'}
+        </button>
+        </div>
       </div>
-      <p style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+      {open && <p style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: '#94a3b8' }}>
         {isRep
           ? `Three complete runs ranked by final portfolio value (lower / median / upper)`
           : `Median (solid) with ${lower}th / ${upper}th percentile bounds (dashed)`}
-      </p>
-      <ResponsiveContainer width="100%" height={320}>
+      </p>}
+      {open && <ResponsiveContainer width="100%" height={320}>
         <LineChart data={chartData} margin={{ top: 4, right: 24, bottom: 16, left: 16 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
           <XAxis
@@ -99,7 +109,7 @@ export default function PercentileBandChart({
             dot={false}
           />
         </LineChart>
-      </ResponsiveContainer>
+      </ResponsiveContainer>}
     </div>
   )
 }

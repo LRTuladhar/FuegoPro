@@ -3,6 +3,7 @@ const EMPTY = {
   tax_treatment: 'traditional',
   asset_class: 'stocks',
   balance: 0,
+  start_age: null,
   annual_return_rate: null,
   gains_pct: null,
 }
@@ -26,7 +27,7 @@ export default function AccountsTab({ accounts, onChange }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
               <thead>
                 <tr>
-                  {['Name', 'Tax Treatment', 'Asset Class', 'Balance ($)', 'Return Rate', 'LTCG %', ''].map(h => (
+                  {['Name', 'Tax Treatment', 'Asset Class', 'Balance ($)', 'Start Age', 'Return Rate', 'LTCG %', ''].map(h => (
                     <th key={h} style={th}>{h}</th>
                   ))}
                 </tr>
@@ -60,6 +61,17 @@ export default function AccountsTab({ accounts, onChange }) {
                     </td>
                     <td style={td}>
                       <input type="number" value={a.balance} onChange={e => update(i, { balance: Number(e.target.value) })} style={ci(110)} />
+                    </td>
+                    <td style={td}>
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="now"
+                        value={a.start_age ?? ''}
+                        onChange={e => update(i, { start_age: e.target.value === '' ? null : Number(e.target.value) })}
+                        style={ci(60)}
+                        title="Age at which this account becomes available. Leave empty to use from the start."
+                      />
                     </td>
                     <td style={td}>
                       {a.asset_class !== 'stocks'

@@ -72,6 +72,7 @@ def _build_plan_inputs(plan: Plan) -> PlanInputs:
             tax_treatment=a.tax_treatment,
             asset_class=a.asset_class,
             balance=a.balance,
+            start_age=a.start_age,
             annual_return_rate=a.annual_return_rate or 0.0,
             gains_pct=a.gains_pct or 0.0,
         )

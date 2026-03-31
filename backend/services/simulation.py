@@ -82,8 +82,8 @@ class PlanInputs:
 @dataclass
 class SimulationConfig:
     num_runs:              int = 1000
-    lower_percentile:      int = 10
-    upper_percentile:      int = 90
+    lower_percentile:      int = 20
+    upper_percentile:      int = 80
     initial_market_regime: Optional[str] = None  # 'bear' | 'bull' | None
 
 
@@ -205,9 +205,6 @@ def _simulate_one_run(
     debug_rows:      List[dict] = [] if capture_debug else None
     survived = True
 
-    # References to traditional accounts; reused each year for RMDs / 401k pulls.
-    traditional = [a for a in accounts if a.tax_treatment == "traditional"]
-
     # Track per-account RMDs for debug output
     rmd_by_account = {}
 
@@ -215,6 +212,10 @@ def _simulate_one_run(
         age           = current_age + age_idx
         years_elapsed = age_idx                  # age - current_age
         stock_return  = float(stock_returns[age_idx])
+
+        # Active accounts for this year: those whose start_age has been reached.
+        active_accounts  = [a for a in accounts if a.start_age is None or age >= a.start_age]
+        active_traditional = [a for a in active_accounts if a.tax_treatment == "traditional"]
 
         # -------------------------------------------------------------------
         # Step 1 — Collect income sources active this year
@@ -245,7 +246,7 @@ def _simulate_one_run(
         # Interest is taxed as ordinary income each year; withdrawals from
         # these accounts carry no additional tax (basis already taxed here).
         # -------------------------------------------------------------------
-        for acct in accounts:
+        for acct in active_accounts:
             if acct.tax_treatment == "taxable_brokerage" and acct.asset_class == "bonds":
                 interest = acct.balance * acct.annual_return_rate
                 if interest > 0.0:
@@ -262,7 +263,7 @@ def _simulate_one_run(
         # -------------------------------------------------------------------
         rmd_total = 0.0
         rmd_by_account = {}  # Reset for this year
-        for acct in traditional:
+        for acct in active_traditional:
             rmd    = calculate_rmd(acct.balance, age)
             actual = min(rmd, acct.balance)
             rmd_by_account[acct.id] = actual  # Track for debug
@@ -292,7 +293,7 @@ def _simulate_one_run(
         if capture_debug:
             pre_expense_snap = {acct.id: acct.balance for acct in accounts}
 
-        wr_expense        = withdraw_for_shortfall(accounts, expense_shortfall)
+        wr_expense        = withdraw_for_shortfall(active_accounts, expense_shortfall)
 
         if wr_expense.shortfall > 0.0:
             survived = False
@@ -346,14 +347,15 @@ def _simulate_one_run(
             pre_tax_snap = {acct.id: acct.balance for acct in accounts}
 
         if tax_shortfall > 0.0:
-            wr_tax = withdraw_for_shortfall(accounts, tax_shortfall)
+            wr_tax = withdraw_for_shortfall(active_accounts, tax_shortfall)
             if wr_tax.shortfall > 0.0:
                 survived = False
 
         # -------------------------------------------------------------------
-        # Step 7 — Apply end-of-year investment returns
+        # Step 7 — Apply end-of-year investment returns (active accounts only;
+        # inactive accounts sit frozen until their start_age is reached)
         # -------------------------------------------------------------------
-        for acct in accounts:
+        for acct in active_accounts:
             growth        = stock_return if acct.asset_class == "stocks" else acct.annual_return_rate
             bal_before    = acct.balance
             acct.balance  = max(0.0, acct.balance * (1.0 + growth))
@@ -374,10 +376,16 @@ def _simulate_one_run(
 
         # -------------------------------------------------------------------
         # Step 9 — Record year-end state
+        # Inactive accounts (start_age not yet reached) are excluded from both
+        # the portfolio total and per-account timeline — they appear as 0 until
+        # their start_age, then their balance is included from that year onward.
         # -------------------------------------------------------------------
-        portfolio_vals[age_idx] = sum(a.balance for a in accounts)
+        portfolio_vals[age_idx] = sum(
+            a.balance for a in active_accounts
+        )
         for ai, acct in enumerate(accounts):
-            account_vals[ai, age_idx] = acct.balance
+            is_active = acct.start_age is None or age >= acct.start_age
+            account_vals[ai, age_idx] = acct.balance if is_active else 0.0
 
         total_income_taxed = total_ordinary + ltcg_income
         eff_rate = total_tax / total_income_taxed if total_income_taxed > 0.0 else 0.0
@@ -443,7 +451,7 @@ def _simulate_one_run(
             # Step 1b bond interest: taxable brokerage bond accounts generate
             # ordinary income each year. Balance at Step 1b equals pre_expense_snap
             # for brokerage accounts (RMDs do not apply to them).
-            for acct in accounts:
+            for acct in active_accounts:
                 if acct.tax_treatment == "taxable_brokerage" and acct.asset_class == "bonds":
                     bal_at_1b = pre_expense_snap.get(acct.id, 0.0)
                     interest  = bal_at_1b * acct.annual_return_rate
@@ -585,6 +593,7 @@ def simulate(
                 tax_treatment=a.tax_treatment,
                 asset_class=a.asset_class,
                 balance=a.balance,
+                start_age=a.start_age,
                 annual_return_rate=a.annual_return_rate or 0.0,
                 # Bond interest is taxed annually (Step 1b); withdrawals are tax-free.
                 gains_pct=0.0 if (a.tax_treatment == "taxable_brokerage" and a.asset_class == "bonds") else (a.gains_pct or 0.0),

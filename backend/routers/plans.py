@@ -134,6 +134,7 @@ def duplicate_plan(plan_id: int, db: Session = Depends(get_db)):
             tax_treatment=a.tax_treatment,
             asset_class=a.asset_class,
             balance=a.balance,
+            start_age=a.start_age,
             annual_return_rate=a.annual_return_rate,
             gains_pct=a.gains_pct,
         ))

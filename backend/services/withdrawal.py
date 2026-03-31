@@ -10,8 +10,8 @@ RMDs and user-planned 401k distributions are pulled before this function is
 called for the general expense shortfall.
 """
 
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -31,6 +31,7 @@ class AccountState:
     balance:            float
     annual_return_rate: float  # 0.0 for stocks (caller uses historical return instead)
     gains_pct:          float  # fraction of brokerage withdrawal that is LTCG; 0.0 otherwise
+    start_age:          Optional[int] = None  # if set, account is inactive until this age
 
 
 # ---------------------------------------------------------------------------
