@@ -349,3 +349,33 @@ class DebugResultOut(BaseModel):
     plan_id: int
     band: str
     age_rows: list[DebugAgeRow] = []
+
+
+# ---------------------------------------------------------------------------
+# Sensitivity Analysis
+# ---------------------------------------------------------------------------
+
+class SensitivityRunRequest(BaseModel):
+    parameter: str    # 'stock_return_offset' | 'inflation_rate' | 'expense_adjustment' | 'healthcare_inflation'
+    min_value: float
+    max_value: float
+    step: float
+    num_runs: int = 200
+
+
+class SensitivityPortfolioPoint(BaseModel):
+    age: int
+    p50: float
+    p_lower: float
+    p_upper: float
+
+
+class SensitivityStepOut(BaseModel):
+    param_value: float
+    success_rate: float
+    portfolio_timeline: list[SensitivityPortfolioPoint] = []
+
+
+class SensitivityResultOut(BaseModel):
+    parameter: str
+    steps: list[SensitivityStepOut] = []

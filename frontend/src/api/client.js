@@ -17,6 +17,7 @@ export const runSimulation        = (planId, params = {}) => api.post(`/simulate
 export const getSimulationResults = (planId) => api.get(`/simulate/${planId}/results`)
 export const getSimulationDebug   = (planId, band = 'median') => api.get(`/simulate/${planId}/debug`, { params: { band } })
 export const compareSimulations   = (planIds, body = {}) => api.post('/simulate/compare', { plan_ids: planIds, ...body })
+export const runSensitivity       = (planId, body) => api.post(`/simulate/${planId}/sensitivity`, body)
 
 // Config
 export const getSimConfig    = ()     => api.get('/config/simulation')

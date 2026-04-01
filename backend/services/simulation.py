@@ -27,6 +27,7 @@ After all runs:
 Public entry point:  simulate(plan, config, seed) → SimulationResult
 """
 
+import copy
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -85,6 +86,22 @@ class SimulationConfig:
     lower_percentile:      int = 20
     upper_percentile:      int = 80
     initial_market_regime: Optional[str] = None  # 'bear' | 'bull' | None
+
+
+@dataclass
+class SensitivityRequest:
+    parameter:  str    # 'stock_return_offset' | 'inflation_rate' | 'expense_adjustment' | 'healthcare_inflation'
+    min_value:  float
+    max_value:  float
+    step:       float
+    num_runs:   int = 200
+
+
+@dataclass
+class SensitivityStepResult:
+    param_value:        float
+    success_rate:       float
+    portfolio_timeline: List['AgePortfolioPoint']
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +373,12 @@ def _simulate_one_run(
         # inactive accounts sit frozen until their start_age is reached)
         # -------------------------------------------------------------------
         for acct in active_accounts:
-            growth        = stock_return if acct.asset_class == "stocks" else acct.annual_return_rate
+            # Bond taxable-brokerage accounts pay interest as ordinary income in
+            # Step 1b; the principal does not compound again here.
+            if acct.tax_treatment == "taxable_brokerage" and acct.asset_class == "bonds":
+                growth = 0.0
+            else:
+                growth = stock_return if acct.asset_class == "stocks" else acct.annual_return_rate
             bal_before    = acct.balance
             acct.balance  = max(0.0, acct.balance * (1.0 + growth))
             return_amount = acct.balance - bal_before
@@ -421,7 +443,14 @@ def _simulate_one_run(
                 else:
                     bal_before_growth = end_bal
 
-                # Per-account withdrawal amounts derived from balance snapshots
+                # Skip inactive accounts entirely — they are frozen until
+                # start_age and have no withdrawals, growth, or balance to show.
+                # Including them would produce misleading start/end balance entries
+                # (frozen balance vs. zeroed account_vals) in the debug output.
+                is_active = acct.start_age is None or age >= acct.start_age
+                if not is_active:
+                    continue
+
                 withdrawn_expense = pre_expense_snap.get(acct.id, 0.0) - pre_tax_snap.get(acct.id, 0.0)
                 withdrawn_tax     = pre_tax_snap.get(acct.id, 0.0) - bal_before_growth
 
@@ -704,6 +733,130 @@ def simulate(
         return_detail=return_detail,
         representative_returns=representative_returns,
     )
+
+
+def simulate_sensitivity(
+    plan:    PlanInputs,
+    request: SensitivityRequest,
+    config:  SimulationConfig,
+    seed:    int = 42,
+) -> List[SensitivityStepResult]:
+    """
+    Run sensitivity analysis by varying one parameter across a range of values.
+
+    For each step value, a deep copy of plan inputs is made, the parameter is
+    modified on the copy, and all num_runs simulations are run using the same
+    pre-sampled return sequences so that differences in outcomes are entirely
+    attributable to the parameter change.
+
+    Parameters
+    ----------
+    plan    : PlanInputs built from the user's saved plan.
+    request : SensitivityRequest specifying parameter, range, and num_runs.
+    config  : SimulationConfig for percentile band settings (num_runs overridden
+              by request.num_runs).
+    seed    : Fixed RNG seed shared across all steps.
+
+    Returns
+    -------
+    List[SensitivityStepResult], one per step value.
+    """
+    rng      = np.random.default_rng(seed)
+    num_ages = plan.planning_horizon
+    num_runs = request.num_runs
+
+    # Pre-sample all return sequences once; reused across every step
+    base_returns = np.zeros((num_runs, num_ages))
+    for run_idx in range(num_runs):
+        base_returns[run_idx] = sample_annual_returns(num_ages, rng)
+
+    # Generate step values from min to max (inclusive)
+    n_steps = round((request.max_value - request.min_value) / request.step) + 1
+    step_values = [request.min_value + i * request.step for i in range(n_steps)]
+    # Clamp the last value to exactly max_value to avoid floating-point overshoot
+    if step_values and step_values[-1] > request.max_value + 1e-9:
+        step_values = step_values[:-1]
+    step_values = [min(v, request.max_value) for v in step_values]
+
+    results: List[SensitivityStepResult] = []
+
+    for step_value in step_values:
+        # Deep-copy plan and apply the parameter modification
+        plan_copy = copy.deepcopy(plan)
+
+        if request.parameter == 'stock_return_offset':
+            pass  # offset applied per-run below; plan copy needs no modification
+
+        elif request.parameter == 'inflation_rate':
+            plan_copy.inflation_rate = step_value
+            for exp in plan_copy.expenses:
+                exp.inflation_rate = step_value
+
+        elif request.parameter == 'expense_adjustment':
+            for exp in plan_copy.expenses:
+                exp.annual_amount = exp.annual_amount * (1.0 + step_value)
+
+        elif request.parameter == 'healthcare_inflation':
+            for exp in plan_copy.expenses:
+                if 'health' in exp.name.lower() or 'medical' in exp.name.lower():
+                    exp.inflation_rate = step_value
+
+        # Run simulations for this step using pre-sampled returns
+        all_portfolio = np.zeros((num_runs, num_ages))
+        successes = 0
+
+        for run_idx in range(num_runs):
+            if request.parameter == 'stock_return_offset':
+                stock_returns = base_returns[run_idx] + step_value
+            else:
+                stock_returns = base_returns[run_idx]
+
+            accounts_copy = [
+                AccountState(
+                    id=a.id,
+                    name=a.name,
+                    tax_treatment=a.tax_treatment,
+                    asset_class=a.asset_class,
+                    balance=a.balance,
+                    start_age=a.start_age,
+                    annual_return_rate=a.annual_return_rate or 0.0,
+                    gains_pct=0.0 if (a.tax_treatment == "taxable_brokerage" and a.asset_class == "bonds") else (a.gains_pct or 0.0),
+                )
+                for a in plan_copy.accounts
+            ]
+
+            survived, pv, _, _, _, _, _, _ = _simulate_one_run(
+                plan=plan_copy,
+                accounts=accounts_copy,
+                stock_returns=stock_returns,
+                capture_debug=False,
+            )
+
+            if survived:
+                successes += 1
+            all_portfolio[run_idx] = pv
+
+        success_rate = successes / num_runs
+
+        # Build portfolio percentile timeline
+        portfolio_timeline: List[AgePortfolioPoint] = []
+        for age_idx in range(num_ages):
+            age  = plan.current_age + age_idx
+            vals = all_portfolio[:, age_idx]
+            portfolio_timeline.append(AgePortfolioPoint(
+                age=age,
+                p50=float(np.median(vals)),
+                p_lower=float(np.percentile(vals, config.lower_percentile)),
+                p_upper=float(np.percentile(vals, config.upper_percentile)),
+            ))
+
+        results.append(SensitivityStepResult(
+            param_value=round(step_value, 10),
+            success_rate=success_rate,
+            portfolio_timeline=portfolio_timeline,
+        ))
+
+    return results
 
 
 def simulate_debug(

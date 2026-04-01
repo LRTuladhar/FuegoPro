@@ -156,12 +156,20 @@ export default function Simulation() {
               Band Selection
             </span>
             <BandSelector value={band} onChange={setBand} />
-            <button
-              onClick={() => navigate(`/plans/${id}/simulate/debug?band=${band}`)}
-              style={{ ...btn('secondary'), marginLeft: 'auto' }}
-            >
-              Debug Table
-            </button>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => navigate(`/plans/${id}/simulate/sensitivity`)}
+                style={btn('secondary')}
+              >
+                Sensitivity
+              </button>
+              <button
+                onClick={() => navigate(`/plans/${id}/simulate/debug?band=${band}`)}
+                style={btn('secondary')}
+              >
+                Debug Table
+              </button>
+            </div>
           </div>
 
           {/* Portfolio value chart + table */}

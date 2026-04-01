@@ -25,14 +25,16 @@ from models.db_models import (
     SimulationConfig as DBSimulationConfig,
 )
 from models.db_models import SimulationResult as DBSimulationResult
-from models.schemas import ComparePlanResult, CompareRequest, SimulationResultOut, DebugResultOut, DebugAgeRow
+from models.schemas import ComparePlanResult, CompareRequest, SimulationResultOut, DebugResultOut, DebugAgeRow, SensitivityRunRequest, SensitivityResultOut
 from services.simulation import (
     ExpenseInput,
     IncomeSourceInput,
     PlanInputs,
+    SensitivityRequest,
     SimulationConfig,
     simulate,
     simulate_debug,
+    simulate_sensitivity,
 )
 from services.withdrawal import AccountState
 
@@ -213,6 +215,68 @@ def get_debug_trace(
         band=band,
         age_rows=age_rows,
     )
+
+
+@router.post("/{plan_id}/sensitivity", response_model=SensitivityResultOut)
+def run_sensitivity(
+    plan_id: int,
+    body: SensitivityRunRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Run sensitivity analysis for a plan, varying one parameter across a range.
+
+    Returns success rates and portfolio timelines for each tested value.
+    """
+    allowed = {'stock_return_offset', 'inflation_rate', 'expense_adjustment', 'healthcare_inflation'}
+    if body.parameter not in allowed:
+        raise HTTPException(status_code=422, detail=f"parameter must be one of: {', '.join(sorted(allowed))}")
+    if body.min_value >= body.max_value:
+        raise HTTPException(status_code=422, detail="min_value must be less than max_value")
+    if body.step <= 0:
+        raise HTTPException(status_code=422, detail="step must be greater than 0")
+    if not (10 <= body.num_runs <= 1000):
+        raise HTTPException(status_code=422, detail="num_runs must be between 10 and 1000")
+    if (body.max_value - body.min_value) / body.step > 30:
+        raise HTTPException(status_code=422, detail="Too many steps: max 30 steps per request")
+
+    plan = db.query(Plan).filter(Plan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    plan_inputs = _build_plan_inputs(plan)
+
+    cfg_row = db.query(DBSimulationConfig).filter_by(id=1).first()
+    config = SimulationConfig(
+        num_runs=body.num_runs,
+        lower_percentile=cfg_row.lower_percentile,
+        upper_percentile=cfg_row.upper_percentile,
+    )
+
+    sensitivity_request = SensitivityRequest(
+        parameter=body.parameter,
+        min_value=body.min_value,
+        max_value=body.max_value,
+        step=body.step,
+        num_runs=body.num_runs,
+    )
+
+    step_results = simulate_sensitivity(plan_inputs, sensitivity_request, config)
+
+    return {
+        "parameter": body.parameter,
+        "steps": [
+            {
+                "param_value": sr.param_value,
+                "success_rate": sr.success_rate,
+                "portfolio_timeline": [
+                    {"age": pt.age, "p50": pt.p50, "p_lower": pt.p_lower, "p_upper": pt.p_upper}
+                    for pt in sr.portfolio_timeline
+                ],
+            }
+            for sr in step_results
+        ],
+    }
 
 
 @router.post("/{plan_id}", response_model=SimulationResultOut)
