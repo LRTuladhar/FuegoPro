@@ -98,6 +98,10 @@ def _build_plan_inputs(plan: Plan) -> PlanInputs:
             start_age=e.start_age,
             end_age=e.end_age,
             inflation_rate=e.inflation_rate,
+            expense_type=e.expense_type or "standard",
+            mortgage_balance=e.mortgage_balance,
+            mortgage_interest_rate=e.mortgage_interest_rate,
+            mortgage_periods=e.mortgage_periods,
         )
         for e in plan.expenses
     ]
@@ -235,8 +239,8 @@ def run_sensitivity(
         raise HTTPException(status_code=422, detail="min_value must be less than max_value")
     if body.step <= 0:
         raise HTTPException(status_code=422, detail="step must be greater than 0")
-    if not (10 <= body.num_runs <= 1000):
-        raise HTTPException(status_code=422, detail="num_runs must be between 10 and 1000")
+    if not (10 <= body.num_runs <= 5000):
+        raise HTTPException(status_code=422, detail="num_runs must be between 10 and 5000")
     if (body.max_value - body.min_value) / body.step > 30:
         raise HTTPException(status_code=422, detail="Too many steps: max 30 steps per request")
 
@@ -253,6 +257,9 @@ def run_sensitivity(
         upper_percentile=cfg_row.upper_percentile,
     )
 
+    if body.initial_market_regime is not None and body.initial_market_regime not in ("bear", "bull"):
+        raise HTTPException(status_code=422, detail="initial_market_regime must be 'bear', 'bull', or None")
+
     sensitivity_request = SensitivityRequest(
         parameter=body.parameter,
         min_value=body.min_value,
@@ -261,7 +268,7 @@ def run_sensitivity(
         num_runs=body.num_runs,
     )
 
-    step_results = simulate_sensitivity(plan_inputs, sensitivity_request, config)
+    step_results = simulate_sensitivity(plan_inputs, sensitivity_request, config, initial_market_regime=body.initial_market_regime)
 
     return {
         "parameter": body.parameter,

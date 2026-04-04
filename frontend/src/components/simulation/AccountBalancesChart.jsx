@@ -14,7 +14,30 @@ const fmt = (v) => {
   return `$${v}`
 }
 
-export default function AccountBalancesChart({ data, band }) {
+function CustomTooltip({ active, payload, label, visibleAccounts, accounts }) {
+  if (!active || !payload || payload.length === 0) return null
+  const total = payload.reduce((sum, entry) => sum + (entry.value ?? 0), 0)
+  return (
+    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: '#f1f5f9' }}>
+      <div style={{ marginBottom: '0.35rem', fontWeight: 600, color: '#94a3b8' }}>Age {label}</div>
+      {payload.map((entry) => {
+        const color = COLORS[accounts.findIndex(([, n]) => n === entry.name) % COLORS.length]
+        return (
+          <div key={entry.name} style={{ display: 'flex', justifyContent: 'space-between', gap: '1.5rem', color }}>
+            <span>{entry.name}</span>
+            <span>{fmt(entry.value)}</span>
+          </div>
+        )
+      })}
+      <div style={{ borderTop: '1px solid #334155', marginTop: '0.35rem', paddingTop: '0.35rem', display: 'flex', justifyContent: 'space-between', gap: '1.5rem', fontWeight: 600, color: '#f1f5f9' }}>
+        <span>Total</span>
+        <span>{fmt(total)}</span>
+      </div>
+    </div>
+  )
+}
+
+export default function AccountBalancesChart({ data, band, initialAccounts, currentAge }) {
   const [open, setOpen] = useState(true)
   const [hidden, setHidden] = useState(new Set())
 
@@ -22,20 +45,34 @@ export default function AccountBalancesChart({ data, band }) {
 
   const filtered = data.filter((p) => p.band === band)
 
-  const ages = [...new Set(filtered.map((p) => p.age))].sort((a, b) => a - b)
-
   const seen = new Map()
   filtered.forEach((p) => {
     if (!seen.has(p.account_id)) seen.set(p.account_id, p.account_name)
   })
   const accounts = [...seen.entries()] // [[id, name], ...]
 
+  // Shift simulation ages by +1 (they are end-of-year; age N means end of year at age N)
+  // so that the chart x-axis reads: currentAge = initial state, currentAge+1 = end of year 1, etc.
   const byAge = {}
   filtered.forEach((p) => {
-    if (!byAge[p.age]) byAge[p.age] = { age: p.age }
-    byAge[p.age][p.account_name] = p.balance
+    const displayAge = p.age + 1
+    if (!byAge[displayAge]) byAge[displayAge] = { age: displayAge }
+    byAge[displayAge][p.account_name] = p.balance
   })
-  const chartData = ages.map((age) => byAge[age])
+
+  // Prepend the initial-balance point at currentAge
+  const initialPoint = { age: currentAge }
+  if (initialAccounts) {
+    accounts.forEach(([id, name]) => {
+      const acct = initialAccounts.find((a) => a.id === id)
+      initialPoint[name] = (acct && (acct.start_age == null || acct.start_age <= currentAge))
+        ? (acct.balance ?? 0)
+        : 0
+    })
+  }
+
+  const ages = [currentAge, ...Object.keys(byAge).map(Number).sort((a, b) => a - b)]
+  const chartData = ages.map((age) => age === currentAge ? initialPoint : byAge[age])
 
   const toggleAccount = (name) =>
     setHidden((prev) => {
@@ -80,11 +117,7 @@ export default function AccountBalancesChart({ data, band }) {
                 tick={{ fontSize: 12, fill: '#94a3b8' }}
               />
               <YAxis tickFormatter={fmt} width={72} tick={{ fontSize: 12, fill: '#94a3b8' }} />
-              <Tooltip
-                formatter={(v, name) => [fmt(v), name]}
-                labelFormatter={(v) => `Age ${v}`}
-                contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#f1f5f9', fontSize: '0.8rem' }}
-              />
+              <Tooltip content={<CustomTooltip visibleAccounts={visibleAccounts} accounts={accounts} />} />
               {visibleAccounts.map(([id, name]) => {
                 const color = COLORS[accounts.findIndex(([, n]) => n === name) % COLORS.length]
                 return (

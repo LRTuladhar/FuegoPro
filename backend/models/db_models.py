@@ -70,13 +70,17 @@ class IncomeSource(Base):
 class Expense(Base):
     __tablename__ = "expenses"
 
-    id             = Column(Integer, primary_key=True, autoincrement=True)
-    plan_id        = Column(Integer, ForeignKey("plans.id", ondelete="CASCADE"), nullable=False)
-    name           = Column(String, nullable=False)
-    annual_amount  = Column(Float, nullable=False)   # in today's dollars
-    start_age      = Column(Integer, nullable=False)
-    end_age        = Column(Integer, nullable=False)
-    inflation_rate = Column(Float, nullable=False)   # e.g. 0.025 for 2.5%
+    id                     = Column(Integer, primary_key=True, autoincrement=True)
+    plan_id                = Column(Integer, ForeignKey("plans.id", ondelete="CASCADE"), nullable=False)
+    name                   = Column(String, nullable=False)
+    annual_amount          = Column(Float, nullable=False)   # in today's dollars (P+I for mortgage)
+    start_age              = Column(Integer, nullable=False)
+    end_age                = Column(Integer, nullable=False)
+    inflation_rate         = Column(Float, nullable=False)   # e.g. 0.025 for 2.5%; typically 0 for fixed mortgage
+    expense_type           = Column(String, nullable=False, default="standard")  # 'standard' | 'mortgage'
+    mortgage_balance       = Column(Float, nullable=True)    # current remaining principal (mortgage only)
+    mortgage_interest_rate = Column(Float, nullable=True)    # annual interest rate, e.g. 0.065 (mortgage only)
+    mortgage_periods       = Column(Integer, nullable=True)  # remaining years on the loan (mortgage only)
 
     plan = relationship("Plan", back_populates="expenses")
 

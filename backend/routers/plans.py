@@ -157,10 +157,14 @@ def duplicate_plan(plan_id: int, db: Session = Depends(get_db)):
         db.add(Expense(
             plan_id=copy.id,
             name=e.name,
-            annual_amount=e.annual_amount,
+            annual_amount=0.0 if e.expense_type == "mortgage" else e.annual_amount,
             start_age=e.start_age,
             end_age=e.end_age,
             inflation_rate=e.inflation_rate,
+            expense_type=e.expense_type or "standard",
+            mortgage_balance=e.mortgage_balance,
+            mortgage_interest_rate=e.mortgage_interest_rate,
+            mortgage_periods=e.mortgage_periods,
         ))
 
     db.commit()

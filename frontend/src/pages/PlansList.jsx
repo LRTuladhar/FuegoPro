@@ -59,7 +59,7 @@ export default function PlansList() {
                   <td style={td}>{p.last_simulated_at ? new Date(p.last_simulated_at).toLocaleDateString() : '—'}</td>
                   <td style={td}>
                     {p.last_success_rate != null
-                      ? <span style={{ fontWeight: 600, color: p.last_success_rate >= 0.9 ? '#4ade80' : p.last_success_rate >= 0.7 ? '#fbbf24' : '#f87171' }}>
+                      ? <span style={{ fontWeight: 600, color: p.last_success_rate >= 0.8 ? '#4ade80' : p.last_success_rate >= 0.7 ? '#fbbf24' : '#f87171' }}>
                           {(p.last_success_rate * 100).toFixed(0)}%
                         </span>
                       : '—'}

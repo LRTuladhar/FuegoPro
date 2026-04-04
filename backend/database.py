@@ -56,6 +56,24 @@ def init_db():
             conn.execute(text("ALTER TABLE accounts ADD COLUMN start_age INTEGER"))
             conn.commit()
 
+    # Migrate: zero out annual_amount for mortgage expenses (now derived from balance/rate/term)
+    with engine.connect() as conn:
+        conn.execute(text("UPDATE expenses SET annual_amount = 0.0 WHERE expense_type = 'mortgage'"))
+        conn.commit()
+
+    # Migrate: add mortgage columns to expenses if they don't exist yet
+    existing_exp_cols = {c["name"] for c in inspector.get_columns("expenses")}
+    with engine.connect() as conn:
+        if "expense_type" not in existing_exp_cols:
+            conn.execute(text("ALTER TABLE expenses ADD COLUMN expense_type TEXT NOT NULL DEFAULT 'standard'"))
+        if "mortgage_balance" not in existing_exp_cols:
+            conn.execute(text("ALTER TABLE expenses ADD COLUMN mortgage_balance REAL"))
+        if "mortgage_interest_rate" not in existing_exp_cols:
+            conn.execute(text("ALTER TABLE expenses ADD COLUMN mortgage_interest_rate REAL"))
+        if "mortgage_periods" not in existing_exp_cols:
+            conn.execute(text("ALTER TABLE expenses ADD COLUMN mortgage_periods INTEGER"))
+        conn.commit()
+
     # Seed the single simulation_config row if it doesn't exist yet;
     # migrate old default percentiles (10/90) to the new defaults (20/80).
     db = SessionLocal()

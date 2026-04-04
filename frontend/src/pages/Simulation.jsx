@@ -12,7 +12,7 @@ import { useSimConfig } from '../store/simConfig'
 export default function Simulation() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { config: globalConfig, loaded: globalLoaded } = useSimConfig()
+  const { config: globalConfig, loaded: globalLoaded, setConfig: setGlobalConfig } = useSimConfig()
   const [plan, setPlan] = useState(null)
   const [results, setResults] = useState(null)
   const [running, setRunning] = useState(false)
@@ -22,12 +22,19 @@ export default function Simulation() {
   const [band, setBand] = useState('median')
   const [viewMode, setViewMode] = useState('statistical')
 
-  // Initialise local config from global defaults once available
+  // Initialise local config from global defaults (including initialRegime) once available
   useEffect(() => {
     if (globalLoaded && simConfig === null) {
-      setSimConfig({ ...globalConfig, initialRegime: 'random' })
+      setSimConfig({ ...globalConfig })
     }
   }, [globalLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync local config changes (including initialRegime) back to global store
+  useEffect(() => {
+    if (simConfig !== null) {
+      setGlobalConfig(simConfig)
+    }
+  }, [simConfig]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     Promise.all([
@@ -167,7 +174,7 @@ export default function Simulation() {
                 onClick={() => navigate(`/plans/${id}/simulate/debug?band=${band}`)}
                 style={btn('secondary')}
               >
-                Debug Table
+                Year By Year View
               </button>
             </div>
           </div>
@@ -196,12 +203,12 @@ export default function Simulation() {
             expenseDetail={results.expense_detail}
             accountTimeline={results.account_timeline}
             returnDetail={results.return_detail}
-            initialBalance={plan?.accounts?.reduce((s, a) => s + (a.balance ?? 0), 0) ?? 0}
+            initialBalance={plan?.accounts?.reduce((s, a) => s + (a.start_age == null || a.start_age <= plan.current_age ? (a.balance ?? 0) : 0), 0) ?? 0}
             band={band}
           />
 
           {/* Account Balances chart */}
-          <AccountBalancesChart data={results.account_timeline} band={band} />
+          <AccountBalancesChart data={results.account_timeline} band={band} initialAccounts={plan?.accounts} currentAge={plan?.current_age} />
 
           {/* Income chart + table */}
           <IncomeExpenseChart
@@ -224,7 +231,7 @@ export default function Simulation() {
           <ExpenseDetailSection data={results.expense_detail} band={band} />
 
           {/* Investment Returns table */}
-          <InvestmentReturnsSection data={results.return_detail} band={band} />
+          <InvestmentReturnsSection data={results.return_detail} band={band} representativeReturns={results.representative_returns} startAge={plan?.current_age} />
 
           {/* Tax Breakdown table */}
           <TaxBreakdownSection data={results.annual_detail} band={band} />
@@ -239,8 +246,6 @@ export default function Simulation() {
     </div>
   )
 }
-
-const group = { display: 'flex', flexDirection: 'column', gap: '0.5rem' }
 
 function btn(variant) {
   const base = {

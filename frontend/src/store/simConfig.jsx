@@ -3,7 +3,7 @@ import { getSimConfig, updateSimConfig } from '../api/client'
 
 const SimConfigContext = createContext(null)
 
-const DEFAULTS = { numRuns: 1000, lowerPct: 20, upperPct: 80 }
+const DEFAULTS = { numRuns: 1000, lowerPct: 20, upperPct: 80, initialRegime: 'random' }
 
 export function SimConfigProvider({ children }) {
   const [config, setConfig] = useState(DEFAULTS)
@@ -12,11 +12,12 @@ export function SimConfigProvider({ children }) {
   useEffect(() => {
     getSimConfig()
       .then(res => {
-        setConfig({
+        setConfig(prev => ({
+          ...prev,
           numRuns: res.data.num_runs,
           lowerPct: res.data.lower_percentile,
           upperPct: res.data.upper_percentile,
-        })
+        }))
       })
       .catch(() => { /* keep defaults on error */ })
       .finally(() => setLoaded(true))

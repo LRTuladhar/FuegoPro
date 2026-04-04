@@ -65,6 +65,10 @@ class ExpenseBase(BaseModel):
     start_age: int
     end_age: int
     inflation_rate: float
+    expense_type: str = "standard"               # 'standard' | 'mortgage'
+    mortgage_balance: Optional[float] = None     # current remaining principal (mortgage only)
+    mortgage_interest_rate: Optional[float] = None  # annual rate e.g. 0.065 (mortgage only)
+    mortgage_periods: Optional[int] = None       # remaining years on the loan (mortgage only)
 
 
 class ExpenseCreate(ExpenseBase):
@@ -360,7 +364,8 @@ class SensitivityRunRequest(BaseModel):
     min_value: float
     max_value: float
     step: float
-    num_runs: int = 200
+    num_runs: int = 1000
+    initial_market_regime: Optional[str] = None  # 'bear' | 'bull' | None
 
 
 class SensitivityPortfolioPoint(BaseModel):

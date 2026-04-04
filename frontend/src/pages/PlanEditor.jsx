@@ -18,7 +18,7 @@ const EMPTY_PLAN = {
   expenses: [],
 }
 
-const TABS = ['Profile', 'Accounts', 'Income', 'Expenses']
+const TABS = ['Profile', 'Assets', 'Income', 'Expenses']
 
 export default function PlanEditor() {
   const { id } = useParams()
@@ -102,7 +102,7 @@ export default function PlanEditor() {
       {/* Tab content */}
       <div style={{ background: '#1e293b', borderRadius: 8, padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
         {activeTab === 'Profile'  && <ProfileTab  plan={plan} onChange={update} />}
-        {activeTab === 'Accounts' && <AccountsTab accounts={plan.accounts} onChange={v => update({ accounts: v })} />}
+        {activeTab === 'Assets'   && <AccountsTab accounts={plan.accounts} onChange={v => update({ accounts: v })} />}
         {activeTab === 'Income'   && <IncomeTab   sources={plan.income_sources} onChange={v => update({ income_sources: v })} />}
         {activeTab === 'Expenses' && <ExpensesTab expenses={plan.expenses} onChange={v => update({ expenses: v })} />}
       </div>

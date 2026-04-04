@@ -60,11 +60,15 @@ class IncomeSourceInput:
 
 @dataclass
 class ExpenseInput:
-    name:           str
-    annual_amount:  float          # in today's dollars
-    start_age:      int
-    end_age:        int
-    inflation_rate: float          # e.g. 0.025 = 2.5%
+    name:                   str
+    annual_amount:          float          # in today's dollars (P+I for mortgage)
+    start_age:              int
+    end_age:                int
+    inflation_rate:         float          # e.g. 0.025 = 2.5%; typically 0 for fixed mortgage
+    expense_type:           str = "standard"   # 'standard' | 'mortgage'
+    mortgage_balance:       Optional[float] = None  # current remaining principal
+    mortgage_interest_rate: Optional[float] = None  # annual rate e.g. 0.065
+    mortgage_periods:       Optional[int]   = None  # remaining years on the loan
 
 
 @dataclass
@@ -182,6 +186,22 @@ class SimulationResult:
 # Single-run helper
 # ---------------------------------------------------------------------------
 
+def _mortgage_payment(balance: float, annual_rate: float, n_months: int) -> float:
+    """Compute the fixed annual payment for an amortizing mortgage.
+
+    Uses monthly compounding: monthly_rate = annual_rate / 12.
+    Returns the sum of 12 monthly payments (i.e. annual cash outflow).
+    """
+    if n_months <= 0 or balance <= 0:
+        return 0.0
+    if annual_rate == 0:
+        return balance / (n_months / 12)
+    r = annual_rate / 12          # monthly rate
+    n = n_months
+    monthly = balance * r * (1 + r) ** n / ((1 + r) ** n - 1)
+    return monthly * 12           # annualize
+
+
 def _simulate_one_run(
     plan:          PlanInputs,
     accounts:      List[AccountState],   # already deep-copied for this run
@@ -224,6 +244,23 @@ def _simulate_one_run(
 
     # Track per-account RMDs for debug output
     rmd_by_account = {}
+
+    # Pre-compute fixed annual payments for mortgage expenses from balance/rate/periods.
+    # annual_amount is ignored for mortgages — payment is derived solely from these fields.
+    # mortgage_periods is the remaining loan term, independent of start_age/end_age.
+    mortgage_payments: List[float] = [
+        _mortgage_payment(
+            exp.mortgage_balance or 0.0,
+            exp.mortgage_interest_rate or 0.0,
+            exp.mortgage_periods or 0,
+        ) if exp.expense_type == "mortgage" else 0.0
+        for exp in plan.expenses
+    ]
+
+    # Initialize per-expense mortgage balance tracking (nominal dollars, mutated each year)
+    mortgage_balances: List[float] = [
+        (exp.mortgage_balance or 0.0) for exp in plan.expenses
+    ]
 
     for age_idx in range(num_ages):
         age           = current_age + age_idx
@@ -290,14 +327,26 @@ def _simulate_one_run(
 
         # -------------------------------------------------------------------
         # Step 3 — Inflation-adjusted expenses for this year
+        # For mortgage expenses, track the amortizing interest portion for
+        # use as an itemized deduction in Step 5.
         # -------------------------------------------------------------------
         total_expenses = 0.0
-        for exp in plan.expenses:
+        total_mortgage_interest = 0.0   # nominal dollars; used as itemized deduction
+        for ei, exp in enumerate(plan.expenses):
             if not (exp.start_age <= age <= exp.end_age):
                 continue
-            adjusted = exp.annual_amount * ((1.0 + exp.inflation_rate) ** years_elapsed)
+            if exp.expense_type == "mortgage":
+                adjusted = mortgage_payments[ei]   # fixed payment; never inflation-adjusted
+            else:
+                adjusted = exp.annual_amount * ((1.0 + exp.inflation_rate) ** years_elapsed)
             total_expenses += adjusted
             expense_details.append({"age": age, "expense_name": exp.name, "amount": adjusted})
+
+            if exp.expense_type == "mortgage" and exp.mortgage_interest_rate and mortgage_balances[ei] > 0:
+                interest  = mortgage_balances[ei] * exp.mortgage_interest_rate
+                principal = max(0.0, adjusted - interest)
+                mortgage_balances[ei] = max(0.0, mortgage_balances[ei] - principal)
+                total_mortgage_interest += interest
 
         # -------------------------------------------------------------------
         # Step 4 — Withdraw from accounts to cover expense shortfall
@@ -338,16 +387,19 @@ def _simulate_one_run(
         inflation_factor  = (1.0 + plan.inflation_rate) ** age_idx
         real_ordinary     = total_ordinary / inflation_factor
         real_ltcg         = ltcg_income    / inflation_factor
+        # Deflate mortgage interest to base-year dollars so it can be compared
+        # against the (fixed base-year) standard deduction amounts.
+        real_itemized     = total_mortgage_interest / inflation_factor
 
         # Federal tax split: compute with and without LTCG to isolate each component
-        fed_ordinary_only = calculate_federal_tax(real_ordinary, 0.0, plan.filing_status) * inflation_factor
-        fed_total         = calculate_federal_tax(real_ordinary, real_ltcg, plan.filing_status) * inflation_factor
+        fed_ordinary_only = calculate_federal_tax(real_ordinary, 0.0, plan.filing_status, real_itemized) * inflation_factor
+        fed_total         = calculate_federal_tax(real_ordinary, real_ltcg, plan.filing_status, real_itemized) * inflation_factor
         fed_ltcg          = fed_total - fed_ordinary_only
 
         # State tax: California taxes LTCG as ordinary income
         real_state_taxable = real_ordinary + (real_ltcg if plan.state_tax_type == "california" else 0.0)
         state_tax          = calculate_state_tax(
-            real_state_taxable, plan.state_tax_type, plan.state_tax_rate, plan.filing_status
+            real_state_taxable, plan.state_tax_type, plan.state_tax_rate, plan.filing_status, real_itemized
         ) * inflation_factor
 
         total_tax = fed_total + state_tax
@@ -494,12 +546,15 @@ def _simulate_one_run(
 
             # Build expense detail for this year
             expense_items_detail = []
-            for exp in plan.expenses:
+            for ei2, exp in enumerate(plan.expenses):
                 if exp.start_age <= age <= exp.end_age:
-                    adjusted = exp.annual_amount * ((1.0 + exp.inflation_rate) ** years_elapsed)
+                    if exp.expense_type == "mortgage":
+                        adjusted = mortgage_payments[ei2]
+                    else:
+                        adjusted = exp.annual_amount * ((1.0 + exp.inflation_rate) ** years_elapsed)
                     expense_items_detail.append({
                         "name":            exp.name,
-                        "base_amount":     exp.annual_amount,
+                        "base_amount":     adjusted,
                         "inflation_rate":  exp.inflation_rate,
                         "adjusted_amount": adjusted,
                         "is_active":       True,
@@ -736,10 +791,11 @@ def simulate(
 
 
 def simulate_sensitivity(
-    plan:    PlanInputs,
-    request: SensitivityRequest,
-    config:  SimulationConfig,
-    seed:    int = 42,
+    plan:                  PlanInputs,
+    request:               SensitivityRequest,
+    config:                SimulationConfig,
+    seed:                  int = 42,
+    initial_market_regime: Optional[str] = None,
 ) -> List[SensitivityStepResult]:
     """
     Run sensitivity analysis by varying one parameter across a range of values.
@@ -765,10 +821,12 @@ def simulate_sensitivity(
     num_ages = plan.planning_horizon
     num_runs = request.num_runs
 
-    # Pre-sample all return sequences once; reused across every step
+    # Pre-sample all return sequences once; reused across every step.
+    # Use the same initial_market_regime as the main simulation so that the
+    # baseline step (offset=0) produces the same success rate distribution.
     base_returns = np.zeros((num_runs, num_ages))
     for run_idx in range(num_runs):
-        base_returns[run_idx] = sample_annual_returns(num_ages, rng)
+        base_returns[run_idx] = sample_annual_returns(num_ages, rng, first_year_regime=initial_market_regime)
 
     # Generate step values from min to max (inclusive)
     n_steps = round((request.max_value - request.min_value) / request.step) + 1

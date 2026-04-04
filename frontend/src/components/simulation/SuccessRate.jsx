@@ -1,7 +1,7 @@
 export default function SuccessRate({ rate, numRuns }) {
   const pct = (rate * 100).toFixed(1)
   const { color, label, bg, border } =
-    rate >= 0.9
+    rate >= 0.8
       ? { color: '#4ade80', label: 'Strong',   bg: 'rgba(20,83,45,0.4)', border: '#166534' }
       : rate >= 0.7
       ? { color: '#fbbf24', label: 'Moderate', bg: 'rgba(120,53,15,0.4)', border: '#92400e' }

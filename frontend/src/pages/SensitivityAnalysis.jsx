@@ -5,6 +5,7 @@ import {
   ComposedChart, Area,
 } from 'recharts'
 import { getPlan, runSensitivity } from '../api/client'
+import { useSimConfig } from '../store/simConfig'
 
 // ---------------------------------------------------------------------------
 // Parameter definitions
@@ -222,6 +223,7 @@ function fmt$(val) {
 
 export default function SensitivityAnalysis() {
   const { id } = useParams()
+  const { config: simConfig } = useSimConfig()
   const [plan, setPlan] = useState(null)
   const [parameter, setParameter] = useState('stock_return_offset')
   const [rangeMin, setRangeMin] = useState('')
@@ -253,12 +255,14 @@ export default function SensitivityAnalysis() {
     try {
       const minVal = paramDef.parseInput(rangeMin)
       const maxVal = paramDef.parseInput(rangeMax)
+      const regime = simConfig?.initialRegime
       const res = await runSensitivity(id, {
         parameter,
         min_value: minVal,
         max_value: maxVal,
         step: paramDef.step,
-        num_runs: 200,
+        num_runs: simConfig?.numRuns ?? 1000,
+        initial_market_regime: (regime && regime !== 'random') ? regime : undefined,
       })
       setResults(res.data.steps)
     } catch (e) {
@@ -363,6 +367,17 @@ export default function SensitivityAnalysis() {
       </div>
 
       {error && <div style={S.error}>{error}</div>}
+
+      {running && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1.5rem', justifyContent: 'center', color: '#94a3b8', fontSize: '0.9rem' }}>
+          <svg width="22" height="22" viewBox="0 0 22 22" style={{ animation: 'spin 0.8s linear infinite', flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="9" fill="none" stroke="#334155" strokeWidth="3" />
+            <path d="M11 2 a9 9 0 0 1 9 9" fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+          Running sensitivity analysis…
+        </div>
+      )}
 
       {/* Results */}
       {results && (

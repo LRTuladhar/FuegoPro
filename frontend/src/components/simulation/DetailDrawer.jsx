@@ -320,7 +320,7 @@ function ExpenseTable({ data }) {
 // ---------------------------------------------------------------------------
 // Investment returns table  (pivoted: one column per account)
 // ---------------------------------------------------------------------------
-function ReturnTable({ data }) {
+function ReturnTable({ data, marketReturns = [], startAge = 0 }) {
   if (!data || data.length === 0) return <Empty />
 
   const ages     = [...new Set(data.map((r) => r.age))].sort((a, b) => a - b)
@@ -336,6 +336,7 @@ function ReturnTable({ data }) {
       <thead>
         <tr style={{ background: '#162032' }}>
           <th style={th}>Age</th>
+          <th style={th}>Mkt Return</th>
           {accounts.map((n) => <th key={n} style={th}>{n}</th>)}
           <th style={th}>Total</th>
         </tr>
@@ -345,9 +346,14 @@ function ReturnTable({ data }) {
           const row   = byAge[age] || {}
           const total = Object.values(row).reduce((a, b) => a + b, 0)
           const totalColor = total >= 0 ? '#34d399' : '#f87171'
+          const mktRate = marketReturns[age - startAge]
+          const mktColor = mktRate == null ? '#94a3b8' : mktRate >= 0 ? '#34d399' : '#f87171'
           return (
             <tr key={age} style={{ borderTop: '1px solid #334155' }}>
               <td style={td}>{age}</td>
+              <td style={{ ...td, color: mktColor }}>
+                {mktRate != null ? `${mktRate >= 0 ? '+' : ''}${(mktRate * 100).toFixed(1)}%` : '—'}
+              </td>
               {accounts.map((n) => {
                 const v = row[n]
                 const c = v == null ? '#94a3b8' : v >= 0 ? '#34d399' : '#f87171'
@@ -423,11 +429,12 @@ export function ExpenseDetailSection({ data, band }) {
   )
 }
 
-export function InvestmentReturnsSection({ data, band }) {
+export function InvestmentReturnsSection({ data, band, representativeReturns, startAge }) {
   const label = BANDS.find((b) => b.value === band)?.label ?? band
+  const marketReturns = representativeReturns?.[band] ?? []
   return (
     <Section title={`Investment Returns — ${label}`}>
-      <ReturnTable data={(data ?? []).filter((r) => r.band === band)} />
+      <ReturnTable data={(data ?? []).filter((r) => r.band === band)} marketReturns={marketReturns} startAge={startAge ?? 0} />
     </Section>
   )
 }

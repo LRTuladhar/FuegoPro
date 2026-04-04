@@ -113,6 +113,16 @@ export default function AccountsTab({ accounts, onChange }) {
             </table>
           </div>
         )}
+
+      {accounts.length > 0 && (() => {
+        const total = accounts.reduce((s, a) => s + (a.balance ?? 0), 0)
+        const fmt = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v)
+        return (
+          <div style={{ marginTop: '0.75rem', textAlign: 'right', fontSize: '0.875rem', color: '#94a3b8' }}>
+            Total Balance: <span style={{ fontWeight: 600, color: '#f1f5f9' }}>{fmt(total)}</span>
+          </div>
+        )
+      })()}
     </div>
   )
 }

@@ -83,20 +83,23 @@ def calculate_federal_tax(
     ordinary_income: float,
     ltcg_income: float,
     filing_status: str,
+    itemized_deduction: float = 0.0,
 ) -> float:
     """
     Return total federal income tax (ordinary + LTCG) for the year.
 
-    ordinary_income: gross ordinary income (wages, SS, RMDs, pensions, etc.)
-                     before any deductions.
-    ltcg_income:     net long-term capital gains / qualified dividends.
-    filing_status:   'single' | 'married'
+    ordinary_income:     gross ordinary income (wages, SS, RMDs, pensions, etc.)
+                         before any deductions.
+    ltcg_income:         net long-term capital gains / qualified dividends.
+    filing_status:       'single' | 'married'
+    itemized_deduction:  total itemized deductions (e.g. mortgage interest).
+                         The larger of this and the standard deduction is used.
 
-    The 2024 standard deduction is subtracted from ordinary income before
-    applying brackets.  LTCG is then stacked on top of taxable ordinary income
-    to determine the applicable LTCG rate.
+    The larger of the standard deduction and itemized_deduction is subtracted
+    from ordinary income before applying brackets.  LTCG is then stacked on
+    top of taxable ordinary income to determine the applicable LTCG rate.
     """
-    deduction       = FEDERAL_STANDARD_DEDUCTION[filing_status]
+    deduction        = max(FEDERAL_STANDARD_DEDUCTION[filing_status], itemized_deduction)
     taxable_ordinary = max(0.0, ordinary_income - deduction)
 
     ordinary_tax = _progressive_tax(taxable_ordinary, FEDERAL_ORDINARY[filing_status])
@@ -110,15 +113,19 @@ def calculate_state_tax(
     state_type: str,
     flat_rate: Optional[float],
     filing_status: str,
+    itemized_deduction: float = 0.0,
 ) -> float:
     """
     Return state income tax for the year.
 
-    ordinary_income: gross ordinary income (same as passed to federal calc).
-    state_type:      'none' | 'moderate' | 'california'
-    flat_rate:       decimal rate for 'moderate' states (e.g. 0.05 = 5%).
-                     Ignored for other state types.
-    filing_status:   'single' | 'married'
+    ordinary_income:     gross ordinary income (same as passed to federal calc).
+    state_type:          'none' | 'moderate' | 'california'
+    flat_rate:           decimal rate for 'moderate' states (e.g. 0.05 = 5%).
+                         Ignored for other state types.
+    filing_status:       'single' | 'married'
+    itemized_deduction:  total itemized deductions (e.g. mortgage interest).
+                         Used for California; the larger of this and the CA
+                         standard deduction is applied.
 
     Note: LTCG is not separately passed here.  California taxes LTCG as
     ordinary income (no preferential rate), so callers should include LTCG
@@ -133,7 +140,7 @@ def calculate_state_tax(
         return max(0.0, ordinary_income) * rate
 
     if state_type == "california":
-        deduction = CA_STANDARD_DEDUCTION[filing_status]
+        deduction = max(CA_STANDARD_DEDUCTION[filing_status], itemized_deduction)
         taxable   = max(0.0, ordinary_income - deduction)
         return _progressive_tax(taxable, CA_BRACKETS[filing_status])
 
