@@ -30,6 +30,10 @@ export default function AccountsTab({ accounts, onChange }) {
         <button onClick={add} style={addBtn}>+ Add Account</button>
       </div>
 
+      <p style={{ margin: '0 0 0.75rem', fontSize: '0.78rem', color: '#64748b' }}>
+        Accounts are withdrawn from top to bottom to cover expenses. Traditional accounts (401k/IRA) are not drawn before age 60.
+      </p>
+
       {accounts.length === 0
         ? <p style={empty}>No accounts yet.</p>
         : (
@@ -95,9 +99,15 @@ export default function AccountsTab({ accounts, onChange }) {
                       />
                     </td>
                     <td style={td}>
-                      {a.asset_class !== 'stocks'
-                        ? <input type="number" step="0.001" placeholder="0.04" value={a.annual_return_rate ?? ''} onChange={e => update(i, { annual_return_rate: e.target.value === '' ? null : Number(e.target.value) })} style={ci(80)} />
-                        : <span style={muted}>historical</span>}
+                      <input
+                        type="number"
+                        step="0.001"
+                        placeholder={a.asset_class === 'stocks' ? 'historical' : '0.04'}
+                        value={a.annual_return_rate ?? ''}
+                        onChange={e => update(i, { annual_return_rate: e.target.value === '' ? null : Number(e.target.value) })}
+                        style={ci(80)}
+                        title={a.asset_class === 'stocks' ? 'Leave blank for historical simulation. Enter a constant rate (e.g. 0.07 for 7%) to override.' : undefined}
+                      />
                     </td>
                     <td style={td}>
                       {a.tax_treatment === 'taxable_brokerage' && a.asset_class === 'stocks'

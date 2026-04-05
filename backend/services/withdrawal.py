@@ -1,10 +1,10 @@
 """
-Tax-efficient withdrawal sequencing for the FuegoPro simulation engine.
+Withdrawal sequencing for the FuegoPro simulation engine.
 
-Withdrawal order (most to least tax-efficient):
-  1. cash_savings      — already after-tax; withdrawals generate no taxable income
-  2. taxable_brokerage — only the gains_pct fraction is LTCG; basis is tax-free
-  3. traditional       — full withdrawal amount is ordinary income
+Accounts are drawn down in the order they appear in the user's plan.
+Traditional accounts (401k/IRA) are only available once their start_age
+is reached — the caller passes only active accounts, so eligibility is
+already enforced before this function is called.
 
 RMDs and user-planned 401k distributions are pulled before this function is
 called for the general expense shortfall.
@@ -29,7 +29,7 @@ class AccountState:
     tax_treatment:      str    # 'traditional' | 'taxable_brokerage' | 'cash_savings'
     asset_class:        str    # 'stocks' | 'bonds' | 'savings'
     balance:            float
-    annual_return_rate: float  # 0.0 for stocks (caller uses historical return instead)
+    annual_return_rate: Optional[float]  # None → use historical sampled return; number → constant annual rate
     gains_pct:          float  # fraction of brokerage withdrawal that is LTCG; 0.0 otherwise
     start_age:          Optional[int] = None  # if set, account is inactive until this age
 
@@ -47,20 +47,12 @@ class WithdrawalResult:
     shortfall:       float = 0.0  # amount that could not be covered (all accounts dry)
 
 
-# ---------------------------------------------------------------------------
-# Withdrawal order
-# ---------------------------------------------------------------------------
-
-_ORDER = ("cash_savings", "taxable_brokerage", "traditional")
-
-
 def withdraw_for_shortfall(accounts: List[AccountState], amount: float) -> WithdrawalResult:
     """
-    Withdraw *amount* from *accounts* in tax-efficient order.
+    Withdraw *amount* from *accounts* in the order they are provided.
 
-    Mutates account balances in place.  Iterates over the tax-treatment order
-    and drains accounts of each type before moving to the next.  Stops as soon
-    as the shortfall is met or every account is exhausted.
+    Mutates account balances in place.  Drains each account in turn until
+    the shortfall is met or every account is exhausted.
 
     Returns a WithdrawalResult summarising how much was taken and what tax
     categories the withdrawn dollars fall into.
@@ -68,21 +60,18 @@ def withdraw_for_shortfall(accounts: List[AccountState], amount: float) -> Withd
     result    = WithdrawalResult()
     remaining = amount
 
-    for treatment in _ORDER:
-        if remaining <= 0.0:
-            break
-        for acct in accounts:
-            if acct.tax_treatment != treatment or acct.balance <= 0.0 or remaining <= 0.0:
-                continue
-            withdrawal       = min(acct.balance, remaining)
-            acct.balance    -= withdrawal
-            remaining       -= withdrawal
-            result.total_withdrawn += withdrawal
+    for acct in accounts:
+        if acct.balance <= 0.0 or remaining <= 0.0:
+            continue
+        withdrawal       = min(acct.balance, remaining)
+        acct.balance    -= withdrawal
+        remaining       -= withdrawal
+        result.total_withdrawn += withdrawal
 
-            if treatment == "traditional":
-                result.ordinary_income += withdrawal
-            elif treatment == "taxable_brokerage":
-                result.ltcg_income += withdrawal * acct.gains_pct
+        if acct.tax_treatment == "traditional":
+            result.ordinary_income += withdrawal
+        elif acct.tax_treatment == "taxable_brokerage":
+            result.ltcg_income += withdrawal * acct.gains_pct
 
     result.shortfall = max(0.0, remaining)
     return result

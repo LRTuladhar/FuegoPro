@@ -272,6 +272,13 @@ def _simulate_one_run(
         active_accounts  = [a for a in accounts if a.start_age is None or age >= a.start_age]
         active_traditional = [a for a in active_accounts if a.tax_treatment == "traditional"]
 
+        # Accounts eligible for shortfall withdrawal: traditional accounts
+        # (401k/IRA) cannot be drawn before age 60 regardless of start_age.
+        withdrawable_accounts = [
+            a for a in active_accounts
+            if not (a.tax_treatment == "traditional" and age < 60)
+        ]
+
         # -------------------------------------------------------------------
         # Step 1 — Collect income sources active this year
         # -------------------------------------------------------------------
@@ -351,7 +358,7 @@ def _simulate_one_run(
 
         # -------------------------------------------------------------------
         # Step 4 — Withdraw from accounts to cover expense shortfall
-        # Order: cash_savings → taxable_brokerage → traditional
+        # Order: accounts are drawn in the order they appear in the user's plan
         # -------------------------------------------------------------------
         available_income  = other_ordinary + other_nontaxable + ss_gross + rmd_total
         expense_shortfall = max(0.0, total_expenses - available_income)
@@ -360,7 +367,7 @@ def _simulate_one_run(
         if capture_debug:
             pre_expense_snap = {acct.id: acct.balance for acct in accounts}
 
-        wr_expense        = withdraw_for_shortfall(active_accounts, expense_shortfall)
+        wr_expense        = withdraw_for_shortfall(withdrawable_accounts, expense_shortfall)
 
         if wr_expense.shortfall > 0.0:
             survived = False
@@ -417,7 +424,7 @@ def _simulate_one_run(
             pre_tax_snap = {acct.id: acct.balance for acct in accounts}
 
         if tax_shortfall > 0.0:
-            wr_tax = withdraw_for_shortfall(active_accounts, tax_shortfall)
+            wr_tax = withdraw_for_shortfall(withdrawable_accounts, tax_shortfall)
             if wr_tax.shortfall > 0.0:
                 survived = False
 
@@ -431,7 +438,10 @@ def _simulate_one_run(
             if acct.tax_treatment == "taxable_brokerage" and acct.asset_class == "bonds":
                 growth = 0.0
             else:
-                growth = stock_return if acct.asset_class == "stocks" else acct.annual_return_rate
+                if acct.asset_class == "stocks":
+                    growth = stock_return if acct.annual_return_rate is None else acct.annual_return_rate
+                else:
+                    growth = acct.annual_return_rate
             bal_before    = acct.balance
             acct.balance  = max(0.0, acct.balance * (1.0 + growth))
             return_amount = acct.balance - bal_before
@@ -486,7 +496,7 @@ def _simulate_one_run(
             # Build per-account detail
             account_rows = []
             for ai, acct in enumerate(accounts):
-                growth_rate = stock_return if acct.asset_class == "stocks" else acct.annual_return_rate
+                growth_rate = (stock_return if acct.annual_return_rate is None else acct.annual_return_rate) if acct.asset_class == "stocks" else acct.annual_return_rate
                 rmd_amt = rmd_by_account.get(acct.id, 0.0)
                 end_bal = account_vals[ai, age_idx]
 
@@ -679,7 +689,7 @@ def simulate(
                 asset_class=a.asset_class,
                 balance=a.balance,
                 start_age=a.start_age,
-                annual_return_rate=a.annual_return_rate or 0.0,
+                annual_return_rate=a.annual_return_rate,
                 # Bond interest is taxed annually (Step 1b); withdrawals are tax-free.
                 gains_pct=0.0 if (a.tax_treatment == "taxable_brokerage" and a.asset_class == "bonds") else (a.gains_pct or 0.0),
             )
@@ -878,7 +888,7 @@ def simulate_sensitivity(
                     asset_class=a.asset_class,
                     balance=a.balance,
                     start_age=a.start_age,
-                    annual_return_rate=a.annual_return_rate or 0.0,
+                    annual_return_rate=a.annual_return_rate,
                     gains_pct=0.0 if (a.tax_treatment == "taxable_brokerage" and a.asset_class == "bonds") else (a.gains_pct or 0.0),
                 )
                 for a in plan_copy.accounts
