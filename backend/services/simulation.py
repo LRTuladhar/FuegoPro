@@ -89,7 +89,8 @@ class SimulationConfig:
     num_runs:              int = 1000
     lower_percentile:      int = 20
     upper_percentile:      int = 80
-    initial_market_regime: Optional[str] = None  # 'bear' | 'bull' | None
+    initial_market_regime: Optional[str] = None   # 'bear' | 'bull' | None
+    stock_return_offset:   float = 0.0            # added to every sampled annual return
 
 
 @dataclass
@@ -666,7 +667,7 @@ def simulate(
         # Sample a full sequence of annual stock returns for this run
         stock_returns = sample_annual_returns(
             num_ages, rng, first_year_regime=config.initial_market_regime
-        )
+        ) + config.stock_return_offset
         all_stock_returns[run_idx] = stock_returns
 
         # Deep-copy account balances so each run starts from the same position

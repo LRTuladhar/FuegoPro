@@ -293,6 +293,7 @@ def run_simulation(
     lower_percentile: Optional[int] = Query(default=None, ge=1, le=49),
     upper_percentile: Optional[int] = Query(default=None, ge=51, le=99),
     initial_market_regime: Optional[str] = Query(default=None),
+    stock_return_offset: Optional[float] = Query(default=None),
     db: Session = Depends(get_db),
 ):
     # Load plan with all child rows
@@ -311,6 +312,7 @@ def run_simulation(
         lower_percentile=lower_percentile if lower_percentile is not None else cfg_row.lower_percentile,
         upper_percentile=upper_percentile if upper_percentile is not None else cfg_row.upper_percentile,
         initial_market_regime=initial_market_regime,
+        stock_return_offset=stock_return_offset if stock_return_offset is not None else 0.0,
     )
 
     # Run Monte Carlo simulation

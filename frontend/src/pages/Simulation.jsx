@@ -79,6 +79,7 @@ export default function Simulation() {
         lower_percentile: simConfig.lowerPct,
         upper_percentile: simConfig.upperPct,
         initial_market_regime: simConfig.initialRegime === 'random' ? undefined : simConfig.initialRegime,
+        stock_return_offset: simConfig.returnOffset ? simConfig.returnOffset / 100 : undefined,
       })
       setResults(res.data)
     } catch (e) {
