@@ -28,7 +28,7 @@ class Plan(Base):
     created_at        = Column(DateTime, default=datetime.utcnow)
     updated_at        = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    accounts         = relationship("Account",       back_populates="plan", cascade="all, delete-orphan")
+    accounts         = relationship("Account",       back_populates="plan", cascade="all, delete-orphan", order_by="Account.id")
     income_sources   = relationship("IncomeSource",  back_populates="plan", cascade="all, delete-orphan")
     expenses         = relationship("Expense",       back_populates="plan", cascade="all, delete-orphan")
     simulation_result = relationship("SimulationResult", back_populates="plan",

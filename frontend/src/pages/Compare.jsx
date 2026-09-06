@@ -18,6 +18,7 @@ export default function Compare() {
   const [results, setResults] = useState(null)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState(null)
+  const [hiddenLines, setHiddenLines] = useState(new Set())
 
   // Initialise simConfig from global context once loaded
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function Compare() {
     setRunning(true)
     setError(null)
     setResults(null)
+    setHiddenLines(new Set())
     try {
       const res = await compareSimulations(chosenIds, {
         num_runs: simConfig.numRuns,
@@ -61,7 +63,15 @@ export default function Compare() {
     setResults(null)
   }
 
-  // Build combined chart data: [{age, "Plan A": val, "Plan B": val}, ...]
+  const toggleLine = (dataKey) => {
+    setHiddenLines(prev => {
+      const next = new Set(prev)
+      next.has(dataKey) ? next.delete(dataKey) : next.add(dataKey)
+      return next
+    })
+  }
+
+  // Build combined chart data including low/high bands
   const chartData = buildChartData(results)
 
   return (
@@ -232,7 +242,7 @@ export default function Compare() {
           {chartData.length > 0 && (
             <div style={{ background: '#1e293b', borderRadius: 8, padding: '1.25rem 1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
               <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#f1f5f9', marginBottom: '1rem' }}>
-                Median Portfolio Value (p50)
+                Portfolio Value — Median with Low / High Bands
               </div>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={chartData} margin={{ top: 4, right: 20, bottom: 4, left: 10 }}>
@@ -249,24 +259,55 @@ export default function Compare() {
                   />
                   <Tooltip
                     formatter={(v, name) => [
-                      v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${(v / 1e3).toFixed(0)}K`,
+                      v != null ? (v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${(v / 1e3).toFixed(0)}K`) : '—',
                       name,
                     ]}
                     labelFormatter={age => `Age ${age}`}
                     contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, color: '#f1f5f9', fontSize: '0.8rem' }}
                   />
-                  <Legend wrapperStyle={{ fontSize: '0.8rem', paddingTop: 12, color: '#94a3b8' }} />
-                  {results.map((r, idx) => (
+                  <Legend
+                    wrapperStyle={{ fontSize: '0.8rem', paddingTop: 12, color: '#94a3b8', cursor: 'pointer' }}
+                    onClick={({ dataKey }) => toggleLine(dataKey)}
+                    formatter={(value, entry) => (
+                      <span style={{ color: hiddenLines.has(entry.dataKey) ? '#475569' : '#94a3b8', textDecoration: hiddenLines.has(entry.dataKey) ? 'line-through' : 'none' }}>
+                        {value}
+                      </span>
+                    )}
+                  />
+                  {results.flatMap((r, idx) => [
                     <Line
-                      key={r.plan_id}
+                      key={`${r.plan_id}-median`}
                       type="monotone"
                       dataKey={r.plan_name}
                       stroke={PLAN_COLORS[idx]}
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 4 }}
-                    />
-                  ))}
+                      hide={hiddenLines.has(r.plan_name)}
+                    />,
+                    <Line
+                      key={`${r.plan_id}-high`}
+                      type="monotone"
+                      dataKey={`${r.plan_name} (High)`}
+                      stroke={PLAN_COLORS[idx]}
+                      strokeWidth={1.5}
+                      strokeDasharray="8 4"
+                      dot={false}
+                      activeDot={{ r: 3 }}
+                      hide={hiddenLines.has(`${r.plan_name} (High)`)}
+                    />,
+                    <Line
+                      key={`${r.plan_id}-low`}
+                      type="monotone"
+                      dataKey={`${r.plan_name} (Low)`}
+                      stroke={PLAN_COLORS[idx]}
+                      strokeWidth={1.5}
+                      strokeDasharray="3 3"
+                      dot={false}
+                      activeDot={{ r: 3 }}
+                      hide={hiddenLines.has(`${r.plan_name} (Low)`)}
+                    />,
+                  ])}
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -305,11 +346,35 @@ export default function Compare() {
                     <td key={r.plan_id} style={td}>{r.lower_percentile}th – {r.upper_percentile}th</td>
                   ))}
                 </tr>
-                <tr>
+                <tr style={{ borderBottom: '1px solid #334155' }}>
                   <td style={td}>Final median portfolio</td>
                   {results.map(r => {
                     const last = r.portfolio_timeline[r.portfolio_timeline.length - 1]
                     const val = last?.p50 ?? 0
+                    return (
+                      <td key={r.plan_id} style={td}>
+                        {val >= 1e6 ? `$${(val / 1e6).toFixed(2)}M` : `$${(val / 1e3).toFixed(0)}K`}
+                      </td>
+                    )
+                  })}
+                </tr>
+                <tr style={{ borderBottom: '1px solid #334155' }}>
+                  <td style={td}>Final high band portfolio</td>
+                  {results.map(r => {
+                    const last = r.portfolio_timeline[r.portfolio_timeline.length - 1]
+                    const val = last?.p_upper ?? 0
+                    return (
+                      <td key={r.plan_id} style={td}>
+                        {val >= 1e6 ? `$${(val / 1e6).toFixed(2)}M` : `$${(val / 1e3).toFixed(0)}K`}
+                      </td>
+                    )
+                  })}
+                </tr>
+                <tr>
+                  <td style={td}>Final low band portfolio</td>
+                  {results.map(r => {
+                    const last = r.portfolio_timeline[r.portfolio_timeline.length - 1]
+                    const val = last?.p_lower ?? 0
                     return (
                       <td key={r.plan_id} style={td}>
                         {val >= 1e6 ? `$${(val / 1e6).toFixed(2)}M` : `$${(val / 1e3).toFixed(0)}K`}
@@ -326,16 +391,17 @@ export default function Compare() {
   )
 }
 
-// Merge portfolio timelines from multiple results into recharts-compatible format
+// Merge portfolio timelines (median + low/high bands) into recharts-compatible format
 function buildChartData(results) {
   if (!results || results.length === 0) return []
-  // Collect all ages
   const ages = [...new Set(results.flatMap(r => r.portfolio_timeline.map(pt => pt.age)))].sort((a, b) => a - b)
   return ages.map(age => {
     const row = { age }
     results.forEach(r => {
       const pt = r.portfolio_timeline.find(p => p.age === age)
-      row[r.plan_name] = pt?.p50 ?? null
+      row[r.plan_name]              = pt?.p50     ?? null
+      row[`${r.plan_name} (High)`] = pt?.p_upper ?? null
+      row[`${r.plan_name} (Low)`]  = pt?.p_lower ?? null
     })
     return row
   })

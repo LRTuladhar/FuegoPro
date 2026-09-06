@@ -56,7 +56,7 @@ export default function PlansList() {
                   <td style={td}>{p.current_age}</td>
                   <td style={td}>{p.planning_horizon} yrs</td>
                   <td style={td}>{p.filing_status === 'married' ? 'Married' : 'Single'}</td>
-                  <td style={td}>{p.last_simulated_at ? new Date(p.last_simulated_at).toLocaleDateString() : '—'}</td>
+                  <td style={td}>{p.last_simulated_at ? new Date(p.last_simulated_at + 'Z').toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
                   <td style={td}>
                     {p.last_success_rate != null
                       ? <span style={{ fontWeight: 600, color: p.last_success_rate >= 0.8 ? '#4ade80' : p.last_success_rate >= 0.7 ? '#fbbf24' : '#f87171' }}>

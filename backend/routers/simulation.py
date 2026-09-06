@@ -152,9 +152,6 @@ def compare_plans(body: CompareRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
         plan_inputs = _build_plan_inputs(plan)
         sim = simulate(plan_inputs, config)
-        # Update cached rate so the Plans list reflects the compare result
-        plan.last_success_rate = sim.success_rate
-        plan.last_simulated_at = datetime.utcnow()
         results.append({
             "plan_id": plan.id,
             "plan_name": plan.name,
@@ -167,7 +164,6 @@ def compare_plans(body: CompareRequest, db: Session = Depends(get_db)):
                 for pt in sim.portfolio_timeline
             ],
         })
-    db.commit()
     return results
 
 
